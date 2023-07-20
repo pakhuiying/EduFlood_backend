@@ -92,6 +92,11 @@
         let crowd_sourced_photos = [];
         var start_date = Date.parse("1 Jan 1800"); //in ms
         var end_date = Date.parse("31 Dec 2050"); // in ms
+        var leaflet_color_icon = {
+                'yellow': "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-yellow.png",
+                'orange': "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-orange.png",
+                'red': "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png"
+            };
 
         $(function() {
               $('input[name="daterange"]').daterangepicker({
@@ -160,6 +165,10 @@
 
                     else if (flood_severity === 'high'){
                         var icon_url = leaflet_color_icon['red'];
+                    }
+
+                    else {
+                        var icon_url = leaflet_color_icon['yellow'];
                     }
 
                     const flood_icon = L.icon({
@@ -383,11 +392,7 @@
                 return data;
             }
 
-            var leaflet_color_icon = {
-                'yellow': "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-yellow.png",
-                'orange': "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-orange.png",
-                'red': "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png"
-            };
+            
 
             var shelter_icon_url = "https://live.staticflickr.com/65535/53042953595_4977a9d64d_o.png";
             
@@ -443,6 +448,14 @@
                         shelter_photos = [];
                     }
 
+                    if (recoms.length > 1) {
+                        for (var i = 0; i < recoms.length; i++) {
+                            map.removeLayer(recoms[i]);
+                        }
+
+                        recoms = [];
+                    }
+
                     
                     floodLayer.bringToFront();
                 }
@@ -495,6 +508,15 @@
                 }
 
                 else if (basemap === 'Crowd-Sourced Photos') {
+                    if (mumbai_popn_density) {
+                        map.removeLayer(geojson);
+                        mumbai_popn_density = false;
+                    }
+
+                    if (vulnerability_map) {
+                        map.removeLayer(vulnerability_map);
+                    }
+
                     filterFloodImages(flooded_results, start_date, end_date);
                     for (var i = 0; i < crowd_sourced_photos.length; i++){
                         var im = crowd_sourced_photos[i];
@@ -577,7 +599,7 @@
                         });
 
                     for (var i=0; i < shelter_list.length; i++) {
-                        const shelter_markers = L.marker([shelter_list[i]['lat'],shelter_list[i]['lon']], {icon: flood_shelters}).addTo(map);
+                        var shelter_markers = L.marker([shelter_list[i]['lat'],shelter_list[i]['lon']], {icon: flood_shelters}).addTo(map);
                         shelter_markers.bindPopup(shelter_list[i]['message']).openPopup();
                         shelter_photos.push(shelter_markers);
                     }
@@ -636,7 +658,7 @@
                     });
 
                     for (var i = 0; i<recom_dict.length; i++){
-                        const recom_marker = L.marker([recom_dict[i]['lat'],recom_dict[i]['lon']], {icon: recom_icon}).addTo(map);
+                        var recom_marker = L.marker([recom_dict[i]['lat'],recom_dict[i]['lon']], {icon: recom_icon}).addTo(map);
                         recom_marker.bindPopup('<img src="{}"/>'.format(recom_dict[i]['uri'])).openPopup();
                         recoms.push(recom_marker);
                     }
