@@ -10,7 +10,7 @@
   
   .floating-elev .elev-icon i {
     font-size: 42px;
-    color: #d6e9ff;
+    color: #001630;
     transition: all 300ms ease;
   }
   
@@ -36,7 +36,7 @@
   
   .floating-elev h3 {
     font-size: 30px;
-    color: #d6e9ff;
+    color: #001630;
     margin-top: 10px;
     position: relative;
   }
@@ -45,7 +45,7 @@
     content: "";
     height: 3px;
     width: 36px;
-    background: #d6e9ff;
+    background: #001630;
     position: absolute;
     left: 0;
     bottom: -4px;
@@ -110,8 +110,8 @@
   
   .floating-elev input[type="button"] {
     border: none;
-    background: #d6e9ff;
-    color: #000000;
+    background: #001630;
+    color: #ffffff;
     padding: 8px 16px;
     width: 30%;
     border-radius: 24px;
@@ -122,5 +122,5 @@
   }
   
   .floating-elev input[type="button"]:hover {
-    background: #b8bfe2;
+    background: #143bff;
   }
