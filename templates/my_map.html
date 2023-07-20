@@ -1,0 +1,726 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    Flood Simulator
+{% endblock %}
+
+{% block main %}
+        <!-- leaflet map container -->
+        <div id="map" style="width:100%;height:700px;"></div>
+        <!-- dropdown list -->
+        <div id="floating-dropdown"><div id="dd" class="wrapper-dropdown-5" tabindex="1"><img src="{{ url_for('static',filename='img/apple-touch-icon.png')}}" height="30"  align="top" style="padding-top:10px;" >
+            <select class="wrapper-dropdown-5" id="basemaps" ></select> 
+            </div>
+        </div>
+        <div class="control-center" id="centermap" title = 'Click to recenter the map'>Center Map</div>
+        
+        <!-- Simulate flood -->
+        <div class="floating-elev" title="Enter flood levels in meters">
+            <div class="elev-container">
+                <h3><i class="fa-solid fa-water"></i> Simulate Flood Level</h3>
+                <div id="setElev" class="field-container" >  
+                    <input class="form-input" title="Enter flood levels in meters" autocomplete="off" autofocus type="text" id="elev" value="0" />
+                </div>
+                <input type="button" onclick="setElev(document.getElementById('elev').value);" value="Set"/>
+              </div>
+        </div>
+        
+        <!-- floating form for AMISAFE -->
+        <div class="floating-contact-form">
+            <div class="form-container">
+              <h3>Enter Location</h3>
+              <form action="/amisafe" method="post">
+                <div class="field-container">
+                    <i class="fa-solid fa-location-crosshairs"></i>
+                  <input class="form-input" autocomplete="off" id="amisafe" title="Enter coordinates (lat, lon) in degrees" autofocus name="coord" value="19.090866, 72.831018" type="text">
+                </div>
+                <!-- <button style="width:100px;" type="submit">Am I Safe</button> -->
+                <input type="submit" value="Am I Safe" />
+              </form>
+            </div>
+      
+            <div class="contact-icon" title="Check your location for your flood risk">
+                <i class="fa-solid fa-shield-heart"></i>
+                <h3>Am I Safe</h3>
+            </div>
+                
+          </div>
+          <!-- daterange picker -->
+          <div id="floating-date-range-picker">
+            <i class="fa-regular fa-calendar"></i><input id="daterange" type="text" name="daterange" title="Select date range to filter crowd sourced photos" value="07/14/2023 - 07/15/2023" />
+          </div>
+
+          <script src="{{ url_for('static',filename='js/floating-form.js')}}"></script>
+        
+        
+
+{% endblock %}          
+
+{% block javascript %}
+      <script>
+        (function() {
+            //drop down list
+            var elm = document.getElementById('basemaps'),
+                df = document.createDocumentFragment();
+            // var options_list = ['OpenStreetMap',"OpenTopoMap",'Mumbai Population Density',"Crowd-Sourced Photos",'Land use','Mumbai vulnerability map','Land subsidence','Topography','Road network map','Historical flood map','Global vulnerability map'];
+            var options_list = ['Basemap','Population density','Land use','Land subsidence','Topography','2005 Mumbai flood','Mumbai flood inventory',"Crowd-Sourced Photos",'Flood shelters','Vulnerability index', 'Vulnerability classification'];
+            for (var j = 0; j < options_list.length; j++){
+                var option = document.createElement('option');
+                option.value = options_list[j];
+                option.appendChild(document.createTextNode(options_list[j]));
+                df.appendChild(option);
+            }
+            
+            elm.appendChild(df);
+        }());
+
+        var basemap;
+        document
+            .querySelector('#basemaps')
+            .addEventListener('change', function (e) {
+                
+                // var basemap = e.target.value;
+                basemap = e.target.value;
+                setBasemap(basemap);
+                console.log('basemap:', basemap);
+                updateLegend(basemap);
+                toggleDateTimePicker(basemap);
+            });
+
+        // date range picker
+        var flooded_results = JSON.parse('{{flooded_results | tojson}}');
+        let crowd_sourced_photos = [];
+        var start_date = Date.parse("1 Jan 1800"); //in ms
+        var end_date = Date.parse("31 Dec 2050"); // in ms
+
+        $(function() {
+              $('input[name="daterange"]').daterangepicker({
+                opens: 'left',
+                showDropdowns: true
+              }, function(start, end, label) {
+                start_date = start;
+                end_date = end;
+                console.log("A new date selection was made: " + start_date + ' to ' + end_date);
+                // crowd_sourced_photos = []; //clear all entries and filter again
+                
+                if (basemap === 'Crowd-Sourced Photos'){
+                    //clear all entries and filter again
+                    if (crowd_sourced_photos.length > 1) {
+                        for (var i = 0; i < crowd_sourced_photos.length; i++) {
+                            map.removeLayer(crowd_sourced_photos[i]);
+                        }
+                        crowd_sourced_photos = [];
+                        // filter and add to list again
+                        filterFloodImages(flooded_results, start_date, end_date);
+                        
+                    }
+                    //add back from list
+                    for (var i = 0; i < crowd_sourced_photos.length; i++){
+                        var im = crowd_sourced_photos[i];
+                        im.addTo(map);
+                    }
+                }
+              });
+            });
+        // disable calendar first
+        var dateToggle = document.getElementById('floating-date-range-picker');
+        dateToggle.style.display == "none";
+
+        function toggleDateTimePicker(basemap){
+            if (basemap === 'Crowd-Sourced Photos') {
+                dateToggle.style.display = "block";
+            }
+
+            else {
+                dateToggle.style.display == "none";
+            }  
+        };
+
+        function filterFloodImages(flooded_results, start_date, end_date) {
+            for (var flood_idx in flooded_results){
+                var flood_img = flooded_results[flood_idx]['image']; //icon url
+                var flood_exists = flooded_results[flood_idx]['flood'];
+                var flood_severity = flooded_results[flood_idx]['flood_severity'];
+                var flood_coord = [ flooded_results[flood_idx]['lon'], flooded_results[flood_idx]['lat']];
+                let flood_date = Date.parse(flooded_results[flood_idx]['date']);//change to ms
+                if ((flood_date >= start_date) && (flood_date<=end_date)){
+                    console.log(flood_img);
+                    console.log('flood exist:', flood_exists);
+                    console.log('flood coord:', flood_coord);
+                    console.log('flood severity:', flood_severity);
+                    console.log('flood date:',flood_date);
+                    
+                    if (flood_severity === 'low') {
+                        var icon_url = leaflet_color_icon['yellow'];
+                    }
+
+                    else if (flood_severity === 'moderate') {
+                        var icon_url = leaflet_color_icon['orange'];
+                    }
+
+                    else if (flood_severity === 'high'){
+                        var icon_url = leaflet_color_icon['red'];
+                    }
+
+                    const flood_icon = L.icon({
+                        iconUrl: icon_url,
+                        iconSize: [25, 41],
+                        iconAnchor: [16, 37],
+                        popupAnchor: [0, -28]
+                    });
+                    
+                    var geojsonFeature = {
+                        "type": "Feature",
+                        "properties": {
+                            // "name": "Coors Field",
+                            // "amenity": "Baseball Stadium",
+                            // "popupContent":"<b>Flood:</b> " + flood_exists
+                            popupContent: '<img src="{}" height="120px" width="150px"/><br><b>{}</b><br><img src="https://live.staticflickr.com/65535/53045703616_42fdac04a1_t.jpg" width="50" height="33"/>'.format(flood_img, flooded_results[flood_idx]['date'])
+                        },
+                        "geometry": {
+                            "type": "Point",
+                            "coordinates": flood_coord
+                        }
+
+                    };
+
+                    const coorsLayer = L.geoJSON(geojsonFeature, {
+
+                        pointToLayer(feature, latlng) {
+                            return L.marker(latlng, {icon: flood_icon});
+                        },
+                        // onEachFeature
+                        onEachFeature(feature, layer) {
+                            if (feature.properties && feature.properties.popupContent) {
+                                layer.bindPopup(feature.properties.popupContent)
+                            }
+                        }
+                        });
+
+                    crowd_sourced_photos.push(coorsLayer);
+
+                }
+                
+            }
+            return crowd_sourced_photos
+        };
+
+        var legend_imgs = {
+            'Basemap': 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+            'Population density': "https://live.staticflickr.com/65535/53037896916_d0535749df_o.png",
+            'Land use': "https://live.staticflickr.com/65535/53037319537_59106904dd_o.png",
+            'Land subsidence': "https://live.staticflickr.com/65535/53038383823_66e50cd0c5_o.png",
+            'Topography': "https://live.staticflickr.com/65535/53037896931_77802e80a5_o.png",
+            '2005 Mumbai flood': 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+            'Mumbai flood inventory': 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+            "Crowd-Sourced Photos": "https://live.staticflickr.com/65535/53043986152_ef879f0f2c_m.jpg",
+            'Flood shelters': 'https://live.staticflickr.com/65535/53044842070_752f4dd701_m.jpg',
+            'Vulnerability index': "https://live.staticflickr.com/65535/53037319522_c2a141c886_o.png",
+            'Vulnerability classification':"https://live.staticflickr.com/65535/53037175697_8545f2a21a_o.png"
+        };
+
+        
+        var elev = document.getElementById('elev').value;
+        var mapCenter = [19.0861289, 72.90870667];
+        var mapZoom = 11;
+
+        document.getElementById("centermap").addEventListener('click', function() {
+                map.flyTo(mapCenter, mapZoom);
+            });
+
+        var lat, lng, initZoom;
+        lat = mapCenter[0];
+        lng = mapCenter[1];
+        initZoom = mapZoom;
+            
+        // var mapElem = document.getElementById('map');
+        var map = L.map('map',
+            {
+                minZoom: 2,
+                maxZoom: 15,
+                fullscreenControl: true,
+                maxBounds:L.latLngBounds(L.latLng(-90, -180), L.latLng(90, 180)),
+                maxBoundsViscosity: 1.0
+            });
+
+        map.setView([lat, lng], initZoom);
+        
+        map.on('click',function(e) {
+            document.getElementById("amisafe").value =  Math.round(e.latlng.lat * 1000000) / 1000000 + ',' + Math.round(e.latlng.lng * 1000000) / 1000000;
+
+            L.popup().setContent(e.latlng.lat.toFixed(6) + ', ' + e.latlng.lng.toFixed(6))
+                     .setLatLng(e.latlng)
+                     .openOn(map);
+        });
+        
+        console.log('amisafe value:',document.getElementById("amisafe").value);
+        map.on("zoom", function (e) {
+            updateAMISAFE();
+        });
+
+        map.on("move", function (e) {
+            updateAMISAFE();
+        });
+
+        
+
+        var layer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+        var mumbai_popn_density = false; //initialised to undefined by default
+        
+        let shelter_photos = [];
+        var vulnerability_map;
+
+        var fmTileUrl = 'https://www.floodmap.net/getFMTile.ashx?x={x}&y={y}&z={z}&e=';
+        var floodLayer = L.tileLayer(fmTileUrl + elev, {
+            attribution: '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> contributors,<a href="https://www.mapzen.com/rights">Mapzen</a>, <a href = "https://floodmap.net">Floodmap.net</a>, <a href = "https://github.com/akshaykore/mumdata/">Akshay Kore</a>, <a href = "https://doi.org/10.1029/2022GL098477">Wu et al (2022)</a>',
+            opacity: 0.5
+        });
+
+        map.addLayer(floodLayer);
+        // initialise legend container
+        var legend_container = L.wmsLegend(legend_imgs['Basemap'],map);
+
+            function setElev(elevS) {
+                if (isNaN(elevS)) {
+                    alert("Please enter only numeric value!");
+                    return;
+                }
+                elevS = Math.round(elevS);
+                document.getElementById("elev").value = elevS;
+                elev = elevS;
+                //infowindow.close();
+                refresh();
+            }
+
+            function refresh() {
+                floodLayer.setUrl(fmTileUrl + elev);
+            }
+
+            function updateAMISAFE(){
+                center = map.getCenter();
+                document.getElementById("amisafe").value =  Math.round(center.lat * 1000000) / 1000000 + ',' + Math.round(center.lng * 1000000) / 1000000;
+            };
+
+        setElev(elev,false);
+
+
+            function onEachFeature(feature, layer) {
+                // does this feature have a property named popupContent?
+                if (feature.properties && feature.properties.popupContent) {
+                    var lon = parseFloat(feature.geometry.coordinates[0]).toFixed(3);
+                    var lat = parseFloat(feature.geometry.coordinates[1]).toFixed(3);
+                    console.log(lat,lon);
+                    layer.bindPopup(feature.properties.popupContent + "\nlat: {}, lon: {}".format(lat,lon));
+                    // layer.bindPopup(feature.properties.popupContent + '\n' + feature.geometry.coordinates);
+                }
+            }
+
+            // add mumbai population density (2011)
+            var mumbai_dict = JSON.parse('{{mumbai_dict | tojson}}');
+            // get color depending on population density value
+            function getColor(d) {
+                return d > 90000 ? '#800026' :
+                    d > 50000  ? '#BD0026' :
+                    d > 40000  ? '#E31A1C' :
+                    d > 30000  ? '#FC4E2A' :
+                    d > 20000   ? '#FD8D3C' :
+                    d > 10000   ? '#FEB24C' :
+                    d > 5000   ? '#FED976' :
+                                '#FFEDA0';
+            };
+
+            //extend Leaflet to create a GeoJSON layer from a TopoJSON file
+            L.TopoJSON = L.GeoJSON.extend({
+                addData: function (data) {
+                var geojson, key;
+                if (data.type === "Topology") {
+                    for (key in data.objects) {
+                    if (data.objects.hasOwnProperty(key)) {
+                        geojson = topojson.feature(data, data.objects[key]);
+                        L.GeoJSON.prototype.addData.call(this, geojson);
+                    }
+                    }
+                    return this;
+                }
+                L.GeoJSON.prototype.addData.call(this, data);
+                return this;
+                }
+            });
+
+            
+
+            L.topoJson = function (data, options) {
+                return new L.TopoJSON(data, options);
+            };
+
+            //create an empty geojson layer, 
+            //create a different style for each individual feature
+            //with a style and a popup on click
+            var geojson = L.topoJson(null, {
+                style: function(feature){
+                return {
+                    color: "#000",
+                    opacity: 1,
+                    weight: 1,
+                    //fillColor: getColor(feature.properties.density),
+                    fillColor: getColor(mumbai_dict[feature.properties.name].TOT_P_DEN),
+                    fillOpacity: 0.8
+                }
+                },
+                //The onEachFeature option is a function that gets called on each feature before adding it to a GeoJSON layer. 
+                //A common reason to use this option is to attach a popup to features when they are clicked.
+                onEachFeature: function(feature, layer) {
+                layer.bindPopup('<p><b>'+mumbai_dict[feature.properties.name].Ward_Names+'</b><br>'+mumbai_dict[feature.properties.name].TOT_P_DEN+' people/km<sup>2</sup></p>')
+                }
+            });//.addTo(map); //TODO: ADD SET BOUNDS TO MAP FOR ZOOM IN, AND EVENT LISTENER
+            //   map.fitBounds(geojson.getBounds());
+            //fill: #317581;
+            //define a function to get and parse geojson from URL
+            async function getGeoData(url) {
+                let response = await fetch(url);
+                let data = await response.json();
+                console.log(data)
+                return data;
+            }
+
+            var leaflet_color_icon = {
+                'yellow': "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-yellow.png",
+                'orange': "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-orange.png",
+                'red': "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png"
+            };
+
+            var shelter_icon_url = "https://live.staticflickr.com/65535/53042953595_4977a9d64d_o.png";
+            
+            var mumbai_vulnerability_map = {
+                'vulnerability_index': {
+                    "url": "https://live.staticflickr.com/65535/53031989345_4670c818d6_o.png",
+                    "UL": [19.343, 72.672],
+                    "LR": [18.832, 73.1697]
+                }
+            };
+
+            var shelter_list = [{'lat': 19.114259,
+                                'lon': 72.839283,
+                                'message': 'RT @DevaABC #rainhosts I live near Juhu lane and can accommodate around 4- 5 women! #MumbaiRains'},
+                                {'lat': 19.08482,
+                                'lon': 72.841307,
+                                'message': "RT @hithere If you're stuck near #Khar or #Santacruz West, come over. We have a cat and ice cream. #Rainhosts #MumbaiRain\t"},
+                                {'lat': 19.053412,
+                                'lon': 72.835699,
+                                'message': 'RT @TheABC: If anyone is stuck at Hill Road, you are more than welcome to come over. #Bandra #MumbaiRains #RainHosts'},
+                                {'lat': 19.10982,
+                                'lon': 72.907446,
+                                'message': 'RT @hello249: Anyone stuck in Powai, Kanjurmarg please contact if you want to stay over. #Rainhosts'}];
+
+            var recoms = [];
+            var recom_dict = [{'lat':18.945128,'lon':72.823288,'uri':"https://live.staticflickr.com/65535/53045821891_c18bd2cd81_n.jpg"},
+                            {'lat':19.102221,'lon':72.894699,'uri':"https://live.staticflickr.com/65535/53046208665_c4384482fc_n.jpg"},
+                            {'lat':19.177469,'lon':72.958557,'uri':"https://live.staticflickr.com/65535/53046208660_571a256dc5_n.jpg"}];
+
+            function setBasemap(basemap) {
+                if (basemap === 'Basemap') {
+                    if (mumbai_popn_density) {
+                        map.removeLayer(geojson);
+                        mumbai_popn_density = false;
+                    }
+
+                    if (vulnerability_map) {
+                        map.removeLayer(vulnerability_map);
+                    }
+
+                    if (crowd_sourced_photos.length > 1) {
+                        for (var i = 0; i < crowd_sourced_photos.length; i++) {
+                            map.removeLayer(crowd_sourced_photos[i]);
+                        }
+                        crowd_sourced_photos = [];
+                    }
+
+                    if (shelter_photos.length > 1) {
+                        for (var i = 0; i < shelter_photos.length; i++) {
+                            map.removeLayer(shelter_photos[i]);
+                        }
+
+                        shelter_photos = [];
+                    }
+
+                    
+                    floodLayer.bringToFront();
+                }
+
+
+                else if (basemap === 'Population density') {
+                    
+                    if (vulnerability_map) {
+                        map.removeLayer(vulnerability_map);
+                    }
+                    
+                    //fetch the geojson and add it to our geojson layer
+                    getGeoData('https://gist.githubusercontent.com/mickeykedia/9d9144072c5f637c26995569dd347614/raw/b65134846607235adf4ad6498713deed77d3b4b5/Mumbai_Topojson.topojson').then(data => geojson.addData(data));
+                    
+                    if (!mumbai_popn_density) {
+                        geojson.addTo(map);
+                        mumbai_popn_density = true;
+                    }
+                    
+                    // console.log('geojson bounds:',geojson.getBounds());
+                    // map.fitBounds(geojson.getBounds());
+                    map.flyTo(mapCenter, mapZoom);
+                    
+                    floodLayer.bringToFront();
+                }
+
+                else if (basemap === 'Land use') {
+                    if (mumbai_popn_density) {
+                        map.removeLayer(geojson);
+                        mumbai_popn_density = false;
+                    }
+
+                    if (vulnerability_map) {
+                        map.removeLayer(vulnerability_map);
+                    }
+                    
+                    var swlat = 18.878474;//18.877702;
+                    var swlong = 72.674303;//72.671814;
+                    var nelat = 19.3400180;//19.339653;
+                    var nelong = 73.045951;//73.048096;
+                    const latLngBounds = L.latLngBounds([[nelat, nelong], [swlat, swlong]]);
+                    // var urlbase = 'http://akshaykore.github.io/mumdata/layer/';
+                    // var imageUrl = urlbase + "all.png";
+                    var imageUrl = "https://live.staticflickr.com/65535/53033153700_03d4f79dbc_o.png";
+                    vulnerability_map = L.imageOverlay(imageUrl, latLngBounds).addTo(map);
+                    map.flyTo(mapCenter, mapZoom);
+                    // mumbai_landuse = true;
+                    
+                    floodLayer.bringToFront();
+                }
+
+                else if (basemap === 'Crowd-Sourced Photos') {
+                    filterFloodImages(flooded_results, start_date, end_date);
+                    for (var i = 0; i < crowd_sourced_photos.length; i++){
+                        var im = crowd_sourced_photos[i];
+                        im.addTo(map);
+                        // crowd_sourced_photos.push(coorsLayer);
+                    }
+
+                    floodLayer.bringToFront();
+
+                }
+
+                
+                else if (basemap === '2005 Mumbai flood') {
+                    if (mumbai_popn_density) {
+                        map.removeLayer(geojson);
+                        mumbai_popn_density = false;
+                    }
+
+                    if (vulnerability_map) {
+                        map.removeLayer(vulnerability_map);
+                    }
+                    
+                    var swlat = 18.878474;//18.877702;
+                    var swlong = 72.674303;//72.671814;
+                    var nelat = 19.3400180;//19.339653;
+                    var nelong = 73.045951;//73.048096;
+                    const latLngBounds = L.latLngBounds([[nelat, nelong], [swlat, swlong]]);
+                    // var urlbase = 'http://akshaykore.github.io/mumdata/layer/';
+                    // var imageUrl = urlbase + "all.png";
+                    var imageUrl = "http://akshaykore.github.io/mumdata/layers/26july2.gif";
+                    vulnerability_map = L.imageOverlay(imageUrl, latLngBounds).addTo(map);
+                    map.flyTo(mapCenter, mapZoom);
+                    // mumbai_landuse = true;
+                    
+                    floodLayer.bringToFront();
+                }
+
+                else if (basemap === 'Mumbai flood inventory') {
+                    if (mumbai_popn_density) {
+                        map.removeLayer(geojson);
+                        mumbai_popn_density = false;
+                    }
+
+                    if (vulnerability_map) {
+                        map.removeLayer(vulnerability_map);
+                    }
+                    
+                    //var mumbaigeojson = {"type": "FeatureCollection", "features": [{"id": "283", "type": "Feature", "properties": {"Districts": "Mumbai", "End Date": "28-07-2015", "Event Sour": "IMD", "FID": "UEI-IMD-FL-2015-0069", "Main Cause": "Heavy rains", "Number": 62.0, "Start Date": "28-07-2015", "State": "MAHARASHTRA"}, "geometry": {"type": "MultiPolygon", "coordinates": [[[[72.8968157898422, 18.97877205771432], [72.90370617671921, 18.9754169349751], [72.90812361379321, 18.97131809065581], [72.91219406193574, 18.96377651339803], [72.91449868079613, 18.95075535568333], [72.90975973251766, 18.93868144362518], [72.90644288140423, 18.93328151286921], [72.9008864112724, 18.92927896540243], [72.88118751050253, 18.91920608836889], [72.86953201736506, 18.91083510516866], [72.85993480816502, 18.89779735896748], [72.85508864022565, 18.88921858112834], [72.85135032428153, 18.88214526940816], [72.84557575168513, 18.86597641178203], [72.84242056227274, 18.85600432098646], [72.84001940092813, 18.84534277433929], [72.81116865242524, 18.89356037191801], [72.80958980306758, 18.89405796031886], [72.80754521596207, 18.89580819427856], [72.80568483411068, 18.90460497143037], [72.8061972650665, 18.90868525607502], [72.8068881383402, 18.91016178541635], [72.81159484331525, 18.92075770402321], [72.81335138921227, 18.92316604297315], [72.8141945759505, 18.92329200709985], [72.82120299983042, 18.93286218465332], [72.82104602415392, 18.93430446626889], [72.82199138370535, 18.93432733598215], [72.822761620704, 18.93748274643167], [72.82273698334168, 18.93884411883879], [72.8222769383689, 18.94314846329395], [72.81690404291012, 18.94958343815214], [72.81280713134454, 18.9515374758253], [72.8097293878876, 18.95101572095462], [72.80830010886903, 18.95015351907985], [72.80301111596977, 18.94691838306252], [72.79618527744937, 18.94101177416177], [72.79447698749843, 18.93860551813862], [72.79409994157963, 18.93802881618566], [72.78764922710496, 18.93947687439197], [72.78749682277635, 18.9408274038951], [72.78764245171988, 18.94489472931751], [72.78832504708272, 18.94679379385345], [72.79008827194059, 18.94983925338672], [72.79346739323955, 18.95440885121905], [72.79398239294797, 18.95520600964846], [72.79395351585721, 18.95632593594717], [72.7995645752087, 18.9647150526283], [72.80215780686868, 18.97030324185178], [72.8078852109804, 18.98014317967127], [72.81270741493209, 19.00398404882623], [72.8132898709637, 19.01437853179394], [72.81465947898045, 19.0166809705935], [72.81648318461082, 19.01745657387157], [72.8201997873342, 19.01871008967469], [72.81768212020457, 19.03253695482442], [72.82402318280336, 19.03122665213401], [72.82728309274215, 19.03248771037603], [72.83425072989357, 19.04190705777042], [72.84090091617114, 19.04553114584349], [72.84364501683736, 19.04673011397986], [72.84730036960966, 19.04715956030372], [72.85371954610319, 19.05190714485373], [72.85940053066467, 19.05473442100946], [72.86354911790161, 19.05335108371038], [72.86847814824097, 19.05169728119415], [72.8771059960305, 19.04565969551858], [72.87629293624303, 19.04027534037438], [72.87456183047192, 19.030030244689], [72.8712481431852, 19.02246660574824], [72.8756038507172, 19.01789651763469], [72.87973197837584, 19.01550998329478], [72.88465495104302, 19.01266748914903], [72.88282049018025, 18.9999982033423], [72.87900020318017, 18.99147315582439], [72.88036227924191, 18.98439233094707], [72.88242585439563, 18.98119880602779], [72.8968157898422, 18.97877205771432]]]]}}, {"id": "284", "type": "Feature", "properties": {"Districts": "Mumbai", "End Date": "29-07-2015", "Event Sour": "IMD", "FID": "UEI-IMD-FL-2015-0070", "Main Cause": "Heavy rains", "Number": 63.0, "Start Date": "29-07-2015", "State": "MAHARASHTRA"}, "geometry": {"type": "MultiPolygon", "coordinates": [[[[72.8968157898422, 18.97877205771432], [72.90370617671921, 18.9754169349751], [72.90812361379321, 18.97131809065581], [72.91219406193574, 18.96377651339803], [72.91449868079613, 18.95075535568333], [72.90975973251766, 18.93868144362518], [72.90644288140423, 18.93328151286921], [72.9008864112724, 18.92927896540243], [72.88118751050253, 18.91920608836889], [72.86953201736506, 18.91083510516866], [72.85993480816502, 18.89779735896748], [72.85508864022565, 18.88921858112834], [72.85135032428153, 18.88214526940816], [72.84557575168513, 18.86597641178203], [72.84242056227274, 18.85600432098646], [72.84001940092813, 18.84534277433929], [72.81116865242524, 18.89356037191801], [72.80958980306758, 18.89405796031886], [72.80754521596207, 18.89580819427856], [72.80568483411068, 18.90460497143037], [72.8061972650665, 18.90868525607502], [72.8068881383402, 18.91016178541635], [72.81159484331525, 18.92075770402321], [72.81335138921227, 18.92316604297315], [72.8141945759505, 18.92329200709985], [72.82120299983042, 18.93286218465332], [72.82104602415392, 18.93430446626889], [72.82199138370535, 18.93432733598215], [72.822761620704, 18.93748274643167], [72.82273698334168, 18.93884411883879], [72.8222769383689, 18.94314846329395], [72.81690404291012, 18.94958343815214], [72.81280713134454, 18.9515374758253], [72.8097293878876, 18.95101572095462], [72.80830010886903, 18.95015351907985], [72.80301111596977, 18.94691838306252], [72.79618527744937, 18.94101177416177], [72.79447698749843, 18.93860551813862], [72.79409994157963, 18.93802881618566], [72.78764922710496, 18.93947687439197], [72.78749682277635, 18.9408274038951], [72.78764245171988, 18.94489472931751], [72.78832504708272, 18.94679379385345], [72.79008827194059, 18.94983925338672], [72.79346739323955, 18.95440885121905], [72.79398239294797, 18.95520600964846], [72.79395351585721, 18.95632593594717], [72.7995645752087, 18.9647150526283], [72.80215780686868, 18.97030324185178], [72.8078852109804, 18.98014317967127], [72.81270741493209, 19.00398404882623], [72.8132898709637, 19.01437853179394], [72.81465947898045, 19.0166809705935], [72.81648318461082, 19.01745657387157], [72.8201997873342, 19.01871008967469], [72.81768212020457, 19.03253695482442], [72.82402318280336, 19.03122665213401], [72.82728309274215, 19.03248771037603], [72.83425072989357, 19.04190705777042], [72.84090091617114, 19.04553114584349], [72.84364501683736, 19.04673011397986], [72.84730036960966, 19.04715956030372], [72.85371954610319, 19.05190714485373], [72.85940053066467, 19.05473442100946], [72.86354911790161, 19.05335108371038], [72.86847814824097, 19.05169728119415], [72.8771059960305, 19.04565969551858], [72.87629293624303, 19.04027534037438], [72.87456183047192, 19.030030244689], [72.8712481431852, 19.02246660574824], [72.8756038507172, 19.01789651763469], [72.87973197837584, 19.01550998329478], [72.88465495104302, 19.01266748914903], [72.88282049018025, 18.9999982033423], [72.87900020318017, 18.99147315582439], [72.88036227924191, 18.98439233094707], [72.88242585439563, 18.98119880602779], [72.8968157898422, 18.97877205771432]]]]}}, {"id": "285", "type": "Feature", "properties": {"Districts": "Mumbai Suburban", "End Date": "29-07-2015", "Event Sour": "IMD", "FID": "UEI-IMD-FL-2015-0070", "Main Cause": "Heavy rains", "Number": 63.0, "Start Date": "29-07-2015", "State": "MAHARASHTRA"}, "geometry": {"type": "MultiPolygon", "coordinates": [[[[72.95858745046328, 18.98733532677168], [72.94677237860478, 18.98573868739563], [72.91373271426716, 18.98226004058924], [72.90092476507125, 18.97963329176201], [72.8968157898422, 18.97877205771432], [72.88242585439563, 18.98119880602779], [72.88036227924191, 18.98439233094707], [72.87900020318017, 18.99147315582439], [72.88282049018025, 18.9999982033423], [72.88465495104302, 19.01266748914903], [72.87973197837584, 19.01550998329478], [72.8756038507172, 19.01789651763469], [72.8712481431852, 19.02246660574824], [72.87456183047192, 19.030030244689], [72.87629293624303, 19.04027534037438], [72.8771059960305, 19.04565969551858], [72.86847814824097, 19.05169728119415], [72.86354911790161, 19.05335108371038], [72.85940053066467, 19.05473442100946], [72.85371954610319, 19.05190714485373], [72.84730036960966, 19.04715956030372], [72.84364501683736, 19.04673011397986], [72.84090091617114, 19.04553114584349], [72.83425072989357, 19.04190705777042], [72.82728309274215, 19.03248771037603], [72.82402318280336, 19.03122665213401], [72.81768212020457, 19.03253695482442], [72.81606984713498, 19.03884963304525], [72.81786305213896, 19.04839786544681], [72.8173869319721, 19.04884816617313], [72.81807567412122, 19.04952505401655], [72.81702385121037, 19.05426327610256], [72.81674762003186, 19.06125686224332], [72.8169156171512, 19.06443187792705], [72.81712527560168, 19.06574969789027], [72.81776898104725, 19.06794348690772], [72.81904503488569, 19.07006451545557], [72.82018168676382, 19.07226153931446], [72.82118552733152, 19.07400623000483], [72.82177883712495, 19.07520251108917], [72.82182102573216, 19.07585953712638], [72.82184528381528, 19.07833586420653], [72.8225067207259, 19.08083156422093], [72.82307842325741, 19.09054622810729], [72.82244252228948, 19.10420609157388], [72.82183970200148, 19.10805175677963], [72.82172879141619, 19.10894731658545], [72.82204222097846, 19.10973014522055], [72.82633440167767, 19.1116618129481], [72.82711539973772, 19.11197772404634], [72.82578543923202, 19.12447126636608], [72.82026679164925, 19.12614595803968], [72.81975052861543, 19.12224824979024], [72.81773815835788, 19.12252765043879], [72.81263845086764, 19.12671139749982], [72.80770849136437, 19.13308450078041], [72.80658515849979, 19.13549148659935], [72.80670636112146, 19.1373751604856], [72.79976678427204, 19.13748618441439], [72.79520076513172, 19.12464378835415], [72.79314310421705, 19.12374152665597], [72.78602612002203, 19.12433051267502], [72.78363486336978, 19.12517471416639], [72.7840013610179, 19.13039610465973], [72.78752743991178, 19.13680799503358], [72.78769042860304, 19.14540278671905], [72.7869199158376, 19.14830036912149], [72.78063280243954, 19.15271279883915], [72.78023845294791, 19.15405886751481], [72.77996726708892, 19.15630501711714], [72.78037049032277, 19.15761871381994], [72.78102875344891, 19.16030098717416], [72.78924643032211, 19.16598307680438], [72.79167640522105, 19.16851700519952], [72.7944683452085, 19.17650224420049], [72.79463731048355, 19.18275093754702], [72.79393102557276, 19.18921455938542], [72.79420985526639, 19.19063944842468], [72.78889162391658, 19.19208395517147], [72.78612550317129, 19.19214239237619], [72.78466248025697, 19.19369855067044], [72.78415777731561, 19.19457732155452], [72.78274160200185, 19.20584501487173], [72.78183688194987, 19.20812716536857], [72.77898986368804, 19.21613020941472], [72.78018758332075, 19.22276504055053], [72.78201872900392, 19.23681184738414], [72.7822899739972, 19.24411661146626], [72.78223334870403, 19.25785348264018], [72.78161967909723, 19.26128326310093], [72.78152327259038, 19.26324862222877], [72.79059768156439, 19.26007655766847], [72.79585951362014, 19.25968411757414], [72.80033450272988, 19.26095665961824], [72.80559069823289, 19.25639591116251], [72.81820281733967, 19.24547256722724], [72.8247877452733, 19.24467661148488], [72.82908702224606, 19.24542944781298], [72.83525578967117, 19.24928152973121], [72.83700873627848, 19.252839627218], [72.83808384141597, 19.26385647514432], [72.84220344452302, 19.26598870618045], [72.85635609875446, 19.2691815895028], [72.85647765460278, 19.26921735140491], [72.86700161703104, 19.26497950081041], [72.87378730785882, 19.25970158947858], [72.88848932486077, 19.25115547032232], [72.89272655893086, 19.24966917559924], [72.9076138805591, 19.24675500477621], [72.90676449594125, 19.24187111814916], [72.91142409348568, 19.23418916245773], [72.92183212448678, 19.22144681138249], [72.92746623761656, 19.21324339119202], [72.93726371175474, 19.20503843363147], [72.93733508768126, 19.18971338187406], [72.94834207874112, 19.18660385969415], [72.95589482522792, 19.18334075413861], [72.96351816322024, 19.18144137638827], [72.97113830998823, 19.17674430366985], [72.9729408788873, 19.17355923435282], [72.97453407642337, 19.17076643794126], [72.97973684072407, 19.16155314724616], [72.98286903958724, 19.15602011933197], [72.98335063588472, 19.15131076646089], [72.98250801503995, 19.14487475447756], [72.97960742500352, 19.13374017299032], [72.97313899373576, 19.12001419702516], [72.97029944380121, 19.11174620021322], [72.96776197888451, 19.09355081452817], [72.96939460958255, 19.08143235729567], [72.96872462266373, 19.07472236746951], [72.97030308641453, 19.06680469031219], [72.97198745359866, 19.05962980398235], [72.9780395403505, 19.04723209256556], [72.97918375470402, 19.04103591302128], [72.97852544324097, 19.03271608737577], [72.9750188608815, 19.02461962118894], [72.96154663250418, 18.99978773110226], [72.95858745046328, 18.98733532677168]]]]}}, {"id": "668", "type": "Feature", "properties": {"Districts": "Mumbai", "End Date": "20-06-2016", "Event Sour": "IMD", "FID": "UEI-IMD-FL-2016-0093", "Main Cause": "Heavy rain", "Number": 175.0, "Start Date": "20-06-2016", "State": "MAHARASHTRA"}, "geometry": {"type": "MultiPolygon", "coordinates": [[[[72.8968157898422, 18.97877205771432], [72.90370617671921, 18.9754169349751], [72.90812361379321, 18.97131809065581], [72.91219406193574, 18.96377651339803], [72.91449868079613, 18.95075535568333], [72.90975973251766, 18.93868144362518], [72.90644288140423, 18.93328151286921], [72.9008864112724, 18.92927896540243], [72.88118751050253, 18.91920608836889], [72.86953201736506, 18.91083510516866], [72.85993480816502, 18.89779735896748], [72.85508864022565, 18.88921858112834], [72.85135032428153, 18.88214526940816], [72.84557575168513, 18.86597641178203], [72.84242056227274, 18.85600432098646], [72.84001940092813, 18.84534277433929], [72.81116865242524, 18.89356037191801], [72.80958980306758, 18.89405796031886], [72.80754521596207, 18.89580819427856], [72.80568483411068, 18.90460497143037], [72.8061972650665, 18.90868525607502], [72.8068881383402, 18.91016178541635], [72.81159484331525, 18.92075770402321], [72.81335138921227, 18.92316604297315], [72.8141945759505, 18.92329200709985], [72.82120299983042, 18.93286218465332], [72.82104602415392, 18.93430446626889], [72.82199138370535, 18.93432733598215], [72.822761620704, 18.93748274643167], [72.82273698334168, 18.93884411883879], [72.8222769383689, 18.94314846329395], [72.81690404291012, 18.94958343815214], [72.81280713134454, 18.9515374758253], [72.8097293878876, 18.95101572095462], [72.80830010886903, 18.95015351907985], [72.80301111596977, 18.94691838306252], [72.79618527744937, 18.94101177416177], [72.79447698749843, 18.93860551813862], [72.79409994157963, 18.93802881618566], [72.78764922710496, 18.93947687439197], [72.78749682277635, 18.9408274038951], [72.78764245171988, 18.94489472931751], [72.78832504708272, 18.94679379385345], [72.79008827194059, 18.94983925338672], [72.79346739323955, 18.95440885121905], [72.79398239294797, 18.95520600964846], [72.79395351585721, 18.95632593594717], [72.7995645752087, 18.9647150526283], [72.80215780686868, 18.97030324185178], [72.8078852109804, 18.98014317967127], [72.81270741493209, 19.00398404882623], [72.8132898709637, 19.01437853179394], [72.81465947898045, 19.0166809705935], [72.81648318461082, 19.01745657387157], [72.8201997873342, 19.01871008967469], [72.81768212020457, 19.03253695482442], [72.82402318280336, 19.03122665213401], [72.82728309274215, 19.03248771037603], [72.83425072989357, 19.04190705777042], [72.84090091617114, 19.04553114584349], [72.84364501683736, 19.04673011397986], [72.84730036960966, 19.04715956030372], [72.85371954610319, 19.05190714485373], [72.85940053066467, 19.05473442100946], [72.86354911790161, 19.05335108371038], [72.86847814824097, 19.05169728119415], [72.8771059960305, 19.04565969551858], [72.87629293624303, 19.04027534037438], [72.87456183047192, 19.030030244689], [72.8712481431852, 19.02246660574824], [72.8756038507172, 19.01789651763469], [72.87973197837584, 19.01550998329478], [72.88465495104302, 19.01266748914903], [72.88282049018025, 18.9999982033423], [72.87900020318017, 18.99147315582439], [72.88036227924191, 18.98439233094707], [72.88242585439563, 18.98119880602779], [72.8968157898422, 18.97877205771432]]]]}}, {"id": "669", "type": "Feature", "properties": {"Districts": "Mumbai", "End Date": "25-06-2016", "Event Sour": "IMD", "FID": "UEI-IMD-FL-2016-0094", "Main Cause": "Heavy rain", "Number": 176.0, "Start Date": "25-06-2016", "State": "MAHARASHTRA"}, "geometry": {"type": "MultiPolygon", "coordinates": [[[[72.8968157898422, 18.97877205771432], [72.90370617671921, 18.9754169349751], [72.90812361379321, 18.97131809065581], [72.91219406193574, 18.96377651339803], [72.91449868079613, 18.95075535568333], [72.90975973251766, 18.93868144362518], [72.90644288140423, 18.93328151286921], [72.9008864112724, 18.92927896540243], [72.88118751050253, 18.91920608836889], [72.86953201736506, 18.91083510516866], [72.85993480816502, 18.89779735896748], [72.85508864022565, 18.88921858112834], [72.85135032428153, 18.88214526940816], [72.84557575168513, 18.86597641178203], [72.84242056227274, 18.85600432098646], [72.84001940092813, 18.84534277433929], [72.81116865242524, 18.89356037191801], [72.80958980306758, 18.89405796031886], [72.80754521596207, 18.89580819427856], [72.80568483411068, 18.90460497143037], [72.8061972650665, 18.90868525607502], [72.8068881383402, 18.91016178541635], [72.81159484331525, 18.92075770402321], [72.81335138921227, 18.92316604297315], [72.8141945759505, 18.92329200709985], [72.82120299983042, 18.93286218465332], [72.82104602415392, 18.93430446626889], [72.82199138370535, 18.93432733598215], [72.822761620704, 18.93748274643167], [72.82273698334168, 18.93884411883879], [72.8222769383689, 18.94314846329395], [72.81690404291012, 18.94958343815214], [72.81280713134454, 18.9515374758253], [72.8097293878876, 18.95101572095462], [72.80830010886903, 18.95015351907985], [72.80301111596977, 18.94691838306252], [72.79618527744937, 18.94101177416177], [72.79447698749843, 18.93860551813862], [72.79409994157963, 18.93802881618566], [72.78764922710496, 18.93947687439197], [72.78749682277635, 18.9408274038951], [72.78764245171988, 18.94489472931751], [72.78832504708272, 18.94679379385345], [72.79008827194059, 18.94983925338672], [72.79346739323955, 18.95440885121905], [72.79398239294797, 18.95520600964846], [72.79395351585721, 18.95632593594717], [72.7995645752087, 18.9647150526283], [72.80215780686868, 18.97030324185178], [72.8078852109804, 18.98014317967127], [72.81270741493209, 19.00398404882623], [72.8132898709637, 19.01437853179394], [72.81465947898045, 19.0166809705935], [72.81648318461082, 19.01745657387157], [72.8201997873342, 19.01871008967469], [72.81768212020457, 19.03253695482442], [72.82402318280336, 19.03122665213401], [72.82728309274215, 19.03248771037603], [72.83425072989357, 19.04190705777042], [72.84090091617114, 19.04553114584349], [72.84364501683736, 19.04673011397986], [72.84730036960966, 19.04715956030372], [72.85371954610319, 19.05190714485373], [72.85940053066467, 19.05473442100946], [72.86354911790161, 19.05335108371038], [72.86847814824097, 19.05169728119415], [72.8771059960305, 19.04565969551858], [72.87629293624303, 19.04027534037438], [72.87456183047192, 19.030030244689], [72.8712481431852, 19.02246660574824], [72.8756038507172, 19.01789651763469], [72.87973197837584, 19.01550998329478], [72.88465495104302, 19.01266748914903], [72.88282049018025, 18.9999982033423], [72.87900020318017, 18.99147315582439], [72.88036227924191, 18.98439233094707], [72.88242585439563, 18.98119880602779], [72.8968157898422, 18.97877205771432]]]]}}, {"id": "672", "type": "Feature", "properties": {"Districts": "Mumbai", "End Date": "07-03-2016", "Event Sour": "IMD", "FID": "UEI-IMD-FL-2016-0095", "Main Cause": "Heavy rain", "Number": 177.0, "Start Date": "07-01-2016", "State": "MAHARASHTRA"}, "geometry": {"type": "MultiPolygon", "coordinates": [[[[72.8968157898422, 18.97877205771432], [72.90370617671921, 18.9754169349751], [72.90812361379321, 18.97131809065581], [72.91219406193574, 18.96377651339803], [72.91449868079613, 18.95075535568333], [72.90975973251766, 18.93868144362518], [72.90644288140423, 18.93328151286921], [72.9008864112724, 18.92927896540243], [72.88118751050253, 18.91920608836889], [72.86953201736506, 18.91083510516866], [72.85993480816502, 18.89779735896748], [72.85508864022565, 18.88921858112834], [72.85135032428153, 18.88214526940816], [72.84557575168513, 18.86597641178203], [72.84242056227274, 18.85600432098646], [72.84001940092813, 18.84534277433929], [72.81116865242524, 18.89356037191801], [72.80958980306758, 18.89405796031886], [72.80754521596207, 18.89580819427856], [72.80568483411068, 18.90460497143037], [72.8061972650665, 18.90868525607502], [72.8068881383402, 18.91016178541635], [72.81159484331525, 18.92075770402321], [72.81335138921227, 18.92316604297315], [72.8141945759505, 18.92329200709985], [72.82120299983042, 18.93286218465332], [72.82104602415392, 18.93430446626889], [72.82199138370535, 18.93432733598215], [72.822761620704, 18.93748274643167], [72.82273698334168, 18.93884411883879], [72.8222769383689, 18.94314846329395], [72.81690404291012, 18.94958343815214], [72.81280713134454, 18.9515374758253], [72.8097293878876, 18.95101572095462], [72.80830010886903, 18.95015351907985], [72.80301111596977, 18.94691838306252], [72.79618527744937, 18.94101177416177], [72.79447698749843, 18.93860551813862], [72.79409994157963, 18.93802881618566], [72.78764922710496, 18.93947687439197], [72.78749682277635, 18.9408274038951], [72.78764245171988, 18.94489472931751], [72.78832504708272, 18.94679379385345], [72.79008827194059, 18.94983925338672], [72.79346739323955, 18.95440885121905], [72.79398239294797, 18.95520600964846], [72.79395351585721, 18.95632593594717], [72.7995645752087, 18.9647150526283], [72.80215780686868, 18.97030324185178], [72.8078852109804, 18.98014317967127], [72.81270741493209, 19.00398404882623], [72.8132898709637, 19.01437853179394], [72.81465947898045, 19.0166809705935], [72.81648318461082, 19.01745657387157], [72.8201997873342, 19.01871008967469], [72.81768212020457, 19.03253695482442], [72.82402318280336, 19.03122665213401], [72.82728309274215, 19.03248771037603], [72.83425072989357, 19.04190705777042], [72.84090091617114, 19.04553114584349], [72.84364501683736, 19.04673011397986], [72.84730036960966, 19.04715956030372], [72.85371954610319, 19.05190714485373], [72.85940053066467, 19.05473442100946], [72.86354911790161, 19.05335108371038], [72.86847814824097, 19.05169728119415], [72.8771059960305, 19.04565969551858], [72.87629293624303, 19.04027534037438], [72.87456183047192, 19.030030244689], [72.8712481431852, 19.02246660574824], [72.8756038507172, 19.01789651763469], [72.87973197837584, 19.01550998329478], [72.88465495104302, 19.01266748914903], [72.88282049018025, 18.9999982033423], [72.87900020318017, 18.99147315582439], [72.88036227924191, 18.98439233094707], [72.88242585439563, 18.98119880602779], [72.8968157898422, 18.97877205771432]]]]}}, {"id": "687", "type": "Feature", "properties": {"Districts": "Mumbai", "End Date": "31-07-2016", "Event Sour": "IMD", "FID": "UEI-IMD-FL-2016-0100", "Main Cause": "Heavy rain", "Number": 182.0, "Start Date": "30-07-2016", "State": "MAHARASHTRA"}, "geometry": {"type": "MultiPolygon", "coordinates": [[[[72.8968157898422, 18.97877205771432], [72.90370617671921, 18.9754169349751], [72.90812361379321, 18.97131809065581], [72.91219406193574, 18.96377651339803], [72.91449868079613, 18.95075535568333], [72.90975973251766, 18.93868144362518], [72.90644288140423, 18.93328151286921], [72.9008864112724, 18.92927896540243], [72.88118751050253, 18.91920608836889], [72.86953201736506, 18.91083510516866], [72.85993480816502, 18.89779735896748], [72.85508864022565, 18.88921858112834], [72.85135032428153, 18.88214526940816], [72.84557575168513, 18.86597641178203], [72.84242056227274, 18.85600432098646], [72.84001940092813, 18.84534277433929], [72.81116865242524, 18.89356037191801], [72.80958980306758, 18.89405796031886], [72.80754521596207, 18.89580819427856], [72.80568483411068, 18.90460497143037], [72.8061972650665, 18.90868525607502], [72.8068881383402, 18.91016178541635], [72.81159484331525, 18.92075770402321], [72.81335138921227, 18.92316604297315], [72.8141945759505, 18.92329200709985], [72.82120299983042, 18.93286218465332], [72.82104602415392, 18.93430446626889], [72.82199138370535, 18.93432733598215], [72.822761620704, 18.93748274643167], [72.82273698334168, 18.93884411883879], [72.8222769383689, 18.94314846329395], [72.81690404291012, 18.94958343815214], [72.81280713134454, 18.9515374758253], [72.8097293878876, 18.95101572095462], [72.80830010886903, 18.95015351907985], [72.80301111596977, 18.94691838306252], [72.79618527744937, 18.94101177416177], [72.79447698749843, 18.93860551813862], [72.79409994157963, 18.93802881618566], [72.78764922710496, 18.93947687439197], [72.78749682277635, 18.9408274038951], [72.78764245171988, 18.94489472931751], [72.78832504708272, 18.94679379385345], [72.79008827194059, 18.94983925338672], [72.79346739323955, 18.95440885121905], [72.79398239294797, 18.95520600964846], [72.79395351585721, 18.95632593594717], [72.7995645752087, 18.9647150526283], [72.80215780686868, 18.97030324185178], [72.8078852109804, 18.98014317967127], [72.81270741493209, 19.00398404882623], [72.8132898709637, 19.01437853179394], [72.81465947898045, 19.0166809705935], [72.81648318461082, 19.01745657387157], [72.8201997873342, 19.01871008967469], [72.81768212020457, 19.03253695482442], [72.82402318280336, 19.03122665213401], [72.82728309274215, 19.03248771037603], [72.83425072989357, 19.04190705777042], [72.84090091617114, 19.04553114584349], [72.84364501683736, 19.04673011397986], [72.84730036960966, 19.04715956030372], [72.85371954610319, 19.05190714485373], [72.85940053066467, 19.05473442100946], [72.86354911790161, 19.05335108371038], [72.86847814824097, 19.05169728119415], [72.8771059960305, 19.04565969551858], [72.87629293624303, 19.04027534037438], [72.87456183047192, 19.030030244689], [72.8712481431852, 19.02246660574824], [72.8756038507172, 19.01789651763469], [72.87973197837584, 19.01550998329478], [72.88465495104302, 19.01266748914903], [72.88282049018025, 18.9999982033423], [72.87900020318017, 18.99147315582439], [72.88036227924191, 18.98439233094707], [72.88242585439563, 18.98119880602779], [72.8968157898422, 18.97877205771432]]]]}}, {"id": "898", "type": "Feature", "properties": {"Districts": "Mumbai", "End Date": "13-07-2014", "Event Sour": "IMD", "FID": "UEI-IMD-FL-2014-0051", "Main Cause": "Heavy rains", "Number": 257.0, "Start Date": "13-07-2014", "State": "MAHARASHTRA"}, "geometry": {"type": "MultiPolygon", "coordinates": [[[[72.8968157898422, 18.97877205771432], [72.90370617671921, 18.9754169349751], [72.90812361379321, 18.97131809065581], [72.91219406193574, 18.96377651339803], [72.91449868079613, 18.95075535568333], [72.90975973251766, 18.93868144362518], [72.90644288140423, 18.93328151286921], [72.9008864112724, 18.92927896540243], [72.88118751050253, 18.91920608836889], [72.86953201736506, 18.91083510516866], [72.85993480816502, 18.89779735896748], [72.85508864022565, 18.88921858112834], [72.85135032428153, 18.88214526940816], [72.84557575168513, 18.86597641178203], [72.84242056227274, 18.85600432098646], [72.84001940092813, 18.84534277433929], [72.81116865242524, 18.89356037191801], [72.80958980306758, 18.89405796031886], [72.80754521596207, 18.89580819427856], [72.80568483411068, 18.90460497143037], [72.8061972650665, 18.90868525607502], [72.8068881383402, 18.91016178541635], [72.81159484331525, 18.92075770402321], [72.81335138921227, 18.92316604297315], [72.8141945759505, 18.92329200709985], [72.82120299983042, 18.93286218465332], [72.82104602415392, 18.93430446626889], [72.82199138370535, 18.93432733598215], [72.822761620704, 18.93748274643167], [72.82273698334168, 18.93884411883879], [72.8222769383689, 18.94314846329395], [72.81690404291012, 18.94958343815214], [72.81280713134454, 18.9515374758253], [72.8097293878876, 18.95101572095462], [72.80830010886903, 18.95015351907985], [72.80301111596977, 18.94691838306252], [72.79618527744937, 18.94101177416177], [72.79447698749843, 18.93860551813862], [72.79409994157963, 18.93802881618566], [72.78764922710496, 18.93947687439197], [72.78749682277635, 18.9408274038951], [72.78764245171988, 18.94489472931751], [72.78832504708272, 18.94679379385345], [72.79008827194059, 18.94983925338672], [72.79346739323955, 18.95440885121905], [72.79398239294797, 18.95520600964846], [72.79395351585721, 18.95632593594717], [72.7995645752087, 18.9647150526283], [72.80215780686868, 18.97030324185178], [72.8078852109804, 18.98014317967127], [72.81270741493209, 19.00398404882623], [72.8132898709637, 19.01437853179394], [72.81465947898045, 19.0166809705935], [72.81648318461082, 19.01745657387157], [72.8201997873342, 19.01871008967469], [72.81768212020457, 19.03253695482442], [72.82402318280336, 19.03122665213401], [72.82728309274215, 19.03248771037603], [72.83425072989357, 19.04190705777042], [72.84090091617114, 19.04553114584349], [72.84364501683736, 19.04673011397986], [72.84730036960966, 19.04715956030372], [72.85371954610319, 19.05190714485373], [72.85940053066467, 19.05473442100946], [72.86354911790161, 19.05335108371038], [72.86847814824097, 19.05169728119415], [72.8771059960305, 19.04565969551858], [72.87629293624303, 19.04027534037438], [72.87456183047192, 19.030030244689], [72.8712481431852, 19.02246660574824], [72.8756038507172, 19.01789651763469], [72.87973197837584, 19.01550998329478], [72.88465495104302, 19.01266748914903], [72.88282049018025, 18.9999982033423], [72.87900020318017, 18.99147315582439], [72.88036227924191, 18.98439233094707], [72.88242585439563, 18.98119880602779], [72.8968157898422, 18.97877205771432]]]]}}, {"id": "900", "type": "Feature", "properties": {"Districts": "Mumbai", "End Date": "31-07-2014", "Event Sour": "IMD", "FID": "UEI-IMD-FL-2014-0053", "Main Cause": "Heavy rains", "Number": 259.0, "Start Date": "31-07-2014", "State": "MAHARASHTRA"}, "geometry": {"type": "MultiPolygon", "coordinates": [[[[72.8968157898422, 18.97877205771432], [72.90370617671921, 18.9754169349751], [72.90812361379321, 18.97131809065581], [72.91219406193574, 18.96377651339803], [72.91449868079613, 18.95075535568333], [72.90975973251766, 18.93868144362518], [72.90644288140423, 18.93328151286921], [72.9008864112724, 18.92927896540243], [72.88118751050253, 18.91920608836889], [72.86953201736506, 18.91083510516866], [72.85993480816502, 18.89779735896748], [72.85508864022565, 18.88921858112834], [72.85135032428153, 18.88214526940816], [72.84557575168513, 18.86597641178203], [72.84242056227274, 18.85600432098646], [72.84001940092813, 18.84534277433929], [72.81116865242524, 18.89356037191801], [72.80958980306758, 18.89405796031886], [72.80754521596207, 18.89580819427856], [72.80568483411068, 18.90460497143037], [72.8061972650665, 18.90868525607502], [72.8068881383402, 18.91016178541635], [72.81159484331525, 18.92075770402321], [72.81335138921227, 18.92316604297315], [72.8141945759505, 18.92329200709985], [72.82120299983042, 18.93286218465332], [72.82104602415392, 18.93430446626889], [72.82199138370535, 18.93432733598215], [72.822761620704, 18.93748274643167], [72.82273698334168, 18.93884411883879], [72.8222769383689, 18.94314846329395], [72.81690404291012, 18.94958343815214], [72.81280713134454, 18.9515374758253], [72.8097293878876, 18.95101572095462], [72.80830010886903, 18.95015351907985], [72.80301111596977, 18.94691838306252], [72.79618527744937, 18.94101177416177], [72.79447698749843, 18.93860551813862], [72.79409994157963, 18.93802881618566], [72.78764922710496, 18.93947687439197], [72.78749682277635, 18.9408274038951], [72.78764245171988, 18.94489472931751], [72.78832504708272, 18.94679379385345], [72.79008827194059, 18.94983925338672], [72.79346739323955, 18.95440885121905], [72.79398239294797, 18.95520600964846], [72.79395351585721, 18.95632593594717], [72.7995645752087, 18.9647150526283], [72.80215780686868, 18.97030324185178], [72.8078852109804, 18.98014317967127], [72.81270741493209, 19.00398404882623], [72.8132898709637, 19.01437853179394], [72.81465947898045, 19.0166809705935], [72.81648318461082, 19.01745657387157], [72.8201997873342, 19.01871008967469], [72.81768212020457, 19.03253695482442], [72.82402318280336, 19.03122665213401], [72.82728309274215, 19.03248771037603], [72.83425072989357, 19.04190705777042], [72.84090091617114, 19.04553114584349], [72.84364501683736, 19.04673011397986], [72.84730036960966, 19.04715956030372], [72.85371954610319, 19.05190714485373], [72.85940053066467, 19.05473442100946], [72.86354911790161, 19.05335108371038], [72.86847814824097, 19.05169728119415], [72.8771059960305, 19.04565969551858], [72.87629293624303, 19.04027534037438], [72.87456183047192, 19.030030244689], [72.8712481431852, 19.02246660574824], [72.8756038507172, 19.01789651763469], [72.87973197837584, 19.01550998329478], [72.88465495104302, 19.01266748914903], [72.88282049018025, 18.9999982033423], [72.87900020318017, 18.99147315582439], [72.88036227924191, 18.98439233094707], [72.88242585439563, 18.98119880602779], [72.8968157898422, 18.97877205771432]]]]}}, {"id": "1201", "type": "Feature", "properties": {"Districts": "Mumbai", "End Date": "06-09-2013", "Event Sour": "IMD", "FID": "UEI-IMD-FL-2013-0100", "Main Cause": "Heavy rains", "Number": 376.0, "Start Date": "06-09-2013", "State": "MAHARASHTRA"}, "geometry": {"type": "MultiPolygon", "coordinates": [[[[72.8968157898422, 18.97877205771432], [72.90370617671921, 18.9754169349751], [72.90812361379321, 18.97131809065581], [72.91219406193574, 18.96377651339803], [72.91449868079613, 18.95075535568333], [72.90975973251766, 18.93868144362518], [72.90644288140423, 18.93328151286921], [72.9008864112724, 18.92927896540243], [72.88118751050253, 18.91920608836889], [72.86953201736506, 18.91083510516866], [72.85993480816502, 18.89779735896748], [72.85508864022565, 18.88921858112834], [72.85135032428153, 18.88214526940816], [72.84557575168513, 18.86597641178203], [72.84242056227274, 18.85600432098646], [72.84001940092813, 18.84534277433929], [72.81116865242524, 18.89356037191801], [72.80958980306758, 18.89405796031886], [72.80754521596207, 18.89580819427856], [72.80568483411068, 18.90460497143037], [72.8061972650665, 18.90868525607502], [72.8068881383402, 18.91016178541635], [72.81159484331525, 18.92075770402321], [72.81335138921227, 18.92316604297315], [72.8141945759505, 18.92329200709985], [72.82120299983042, 18.93286218465332], [72.82104602415392, 18.93430446626889], [72.82199138370535, 18.93432733598215], [72.822761620704, 18.93748274643167], [72.82273698334168, 18.93884411883879], [72.8222769383689, 18.94314846329395], [72.81690404291012, 18.94958343815214], [72.81280713134454, 18.9515374758253], [72.8097293878876, 18.95101572095462], [72.80830010886903, 18.95015351907985], [72.80301111596977, 18.94691838306252], [72.79618527744937, 18.94101177416177], [72.79447698749843, 18.93860551813862], [72.79409994157963, 18.93802881618566], [72.78764922710496, 18.93947687439197], [72.78749682277635, 18.9408274038951], [72.78764245171988, 18.94489472931751], [72.78832504708272, 18.94679379385345], [72.79008827194059, 18.94983925338672], [72.79346739323955, 18.95440885121905], [72.79398239294797, 18.95520600964846], [72.79395351585721, 18.95632593594717], [72.7995645752087, 18.9647150526283], [72.80215780686868, 18.97030324185178], [72.8078852109804, 18.98014317967127], [72.81270741493209, 19.00398404882623], [72.8132898709637, 19.01437853179394], [72.81465947898045, 19.0166809705935], [72.81648318461082, 19.01745657387157], [72.8201997873342, 19.01871008967469], [72.81768212020457, 19.03253695482442], [72.82402318280336, 19.03122665213401], [72.82728309274215, 19.03248771037603], [72.83425072989357, 19.04190705777042], [72.84090091617114, 19.04553114584349], [72.84364501683736, 19.04673011397986], [72.84730036960966, 19.04715956030372], [72.85371954610319, 19.05190714485373], [72.85940053066467, 19.05473442100946], [72.86354911790161, 19.05335108371038], [72.86847814824097, 19.05169728119415], [72.8771059960305, 19.04565969551858], [72.87629293624303, 19.04027534037438], [72.87456183047192, 19.030030244689], [72.8712481431852, 19.02246660574824], [72.8756038507172, 19.01789651763469], [72.87973197837584, 19.01550998329478], [72.88465495104302, 19.01266748914903], [72.88282049018025, 18.9999982033423], [72.87900020318017, 18.99147315582439], [72.88036227924191, 18.98439233094707], [72.88242585439563, 18.98119880602779], [72.8968157898422, 18.97877205771432]]]]}}]};
+                    var mumbaigeojson = {"type": "FeatureCollection", "features": [{"id": "284", "type": "Feature", "properties": {"popupContent": "<b>Flood dates:</b> 28-07-2015, 29-07-2015, 20-06-2016, 25-06-2016, 07-01-2016, 30-07-2016, 13-07-2014, 31-07-2014, 06-09-2013<br><b>N = 9</b>","Districts": "Mumbai", "End Date": "29-07-2015", "Event Sour": "IMD", "FID": "UEI-IMD-FL-2015-0070", "Main Cause": "Heavy rains", "Number": 63.0, "Start Date": "29-07-2015", "State": "MAHARASHTRA"}, "geometry": {"type": "MultiPolygon", "coordinates": [[[[72.8968157898422, 18.97877205771432], [72.90370617671921, 18.9754169349751], [72.90812361379321, 18.97131809065581], [72.91219406193574, 18.96377651339803], [72.91449868079613, 18.95075535568333], [72.90975973251766, 18.93868144362518], [72.90644288140423, 18.93328151286921], [72.9008864112724, 18.92927896540243], [72.88118751050253, 18.91920608836889], [72.86953201736506, 18.91083510516866], [72.85993480816502, 18.89779735896748], [72.85508864022565, 18.88921858112834], [72.85135032428153, 18.88214526940816], [72.84557575168513, 18.86597641178203], [72.84242056227274, 18.85600432098646], [72.84001940092813, 18.84534277433929], [72.81116865242524, 18.89356037191801], [72.80958980306758, 18.89405796031886], [72.80754521596207, 18.89580819427856], [72.80568483411068, 18.90460497143037], [72.8061972650665, 18.90868525607502], [72.8068881383402, 18.91016178541635], [72.81159484331525, 18.92075770402321], [72.81335138921227, 18.92316604297315], [72.8141945759505, 18.92329200709985], [72.82120299983042, 18.93286218465332], [72.82104602415392, 18.93430446626889], [72.82199138370535, 18.93432733598215], [72.822761620704, 18.93748274643167], [72.82273698334168, 18.93884411883879], [72.8222769383689, 18.94314846329395], [72.81690404291012, 18.94958343815214], [72.81280713134454, 18.9515374758253], [72.8097293878876, 18.95101572095462], [72.80830010886903, 18.95015351907985], [72.80301111596977, 18.94691838306252], [72.79618527744937, 18.94101177416177], [72.79447698749843, 18.93860551813862], [72.79409994157963, 18.93802881618566], [72.78764922710496, 18.93947687439197], [72.78749682277635, 18.9408274038951], [72.78764245171988, 18.94489472931751], [72.78832504708272, 18.94679379385345], [72.79008827194059, 18.94983925338672], [72.79346739323955, 18.95440885121905], [72.79398239294797, 18.95520600964846], [72.79395351585721, 18.95632593594717], [72.7995645752087, 18.9647150526283], [72.80215780686868, 18.97030324185178], [72.8078852109804, 18.98014317967127], [72.81270741493209, 19.00398404882623], [72.8132898709637, 19.01437853179394], [72.81465947898045, 19.0166809705935], [72.81648318461082, 19.01745657387157], [72.8201997873342, 19.01871008967469], [72.81768212020457, 19.03253695482442], [72.82402318280336, 19.03122665213401], [72.82728309274215, 19.03248771037603], [72.83425072989357, 19.04190705777042], [72.84090091617114, 19.04553114584349], [72.84364501683736, 19.04673011397986], [72.84730036960966, 19.04715956030372], [72.85371954610319, 19.05190714485373], [72.85940053066467, 19.05473442100946], [72.86354911790161, 19.05335108371038], [72.86847814824097, 19.05169728119415], [72.8771059960305, 19.04565969551858], [72.87629293624303, 19.04027534037438], [72.87456183047192, 19.030030244689], [72.8712481431852, 19.02246660574824], [72.8756038507172, 19.01789651763469], [72.87973197837584, 19.01550998329478], [72.88465495104302, 19.01266748914903], [72.88282049018025, 18.9999982033423], [72.87900020318017, 18.99147315582439], [72.88036227924191, 18.98439233094707], [72.88242585439563, 18.98119880602779], [72.8968157898422, 18.97877205771432]]]]}}, 
+                                                                                    {"id": "285", "type": "Feature", "properties": {"popupContent": "<b>Flood dates:</b>29-07-2015<br><b>N = 1</b>","Districts": "Mumbai Suburban", "End Date": "29-07-2015", "Event Sour": "IMD", "FID": "UEI-IMD-FL-2015-0070", "Main Cause": "Heavy rains", "Number": 63.0, "Start Date": "29-07-2015", "State": "MAHARASHTRA"}, "geometry": {"type": "MultiPolygon", "coordinates": [[[[72.95858745046328, 18.98733532677168], [72.94677237860478, 18.98573868739563], [72.91373271426716, 18.98226004058924], [72.90092476507125, 18.97963329176201], [72.8968157898422, 18.97877205771432], [72.88242585439563, 18.98119880602779], [72.88036227924191, 18.98439233094707], [72.87900020318017, 18.99147315582439], [72.88282049018025, 18.9999982033423], [72.88465495104302, 19.01266748914903], [72.87973197837584, 19.01550998329478], [72.8756038507172, 19.01789651763469], [72.8712481431852, 19.02246660574824], [72.87456183047192, 19.030030244689], [72.87629293624303, 19.04027534037438], [72.8771059960305, 19.04565969551858], [72.86847814824097, 19.05169728119415], [72.86354911790161, 19.05335108371038], [72.85940053066467, 19.05473442100946], [72.85371954610319, 19.05190714485373], [72.84730036960966, 19.04715956030372], [72.84364501683736, 19.04673011397986], [72.84090091617114, 19.04553114584349], [72.83425072989357, 19.04190705777042], [72.82728309274215, 19.03248771037603], [72.82402318280336, 19.03122665213401], [72.81768212020457, 19.03253695482442], [72.81606984713498, 19.03884963304525], [72.81786305213896, 19.04839786544681], [72.8173869319721, 19.04884816617313], [72.81807567412122, 19.04952505401655], [72.81702385121037, 19.05426327610256], [72.81674762003186, 19.06125686224332], [72.8169156171512, 19.06443187792705], [72.81712527560168, 19.06574969789027], [72.81776898104725, 19.06794348690772], [72.81904503488569, 19.07006451545557], [72.82018168676382, 19.07226153931446], [72.82118552733152, 19.07400623000483], [72.82177883712495, 19.07520251108917], [72.82182102573216, 19.07585953712638], [72.82184528381528, 19.07833586420653], [72.8225067207259, 19.08083156422093], [72.82307842325741, 19.09054622810729], [72.82244252228948, 19.10420609157388], [72.82183970200148, 19.10805175677963], [72.82172879141619, 19.10894731658545], [72.82204222097846, 19.10973014522055], [72.82633440167767, 19.1116618129481], [72.82711539973772, 19.11197772404634], [72.82578543923202, 19.12447126636608], [72.82026679164925, 19.12614595803968], [72.81975052861543, 19.12224824979024], [72.81773815835788, 19.12252765043879], [72.81263845086764, 19.12671139749982], [72.80770849136437, 19.13308450078041], [72.80658515849979, 19.13549148659935], [72.80670636112146, 19.1373751604856], [72.79976678427204, 19.13748618441439], [72.79520076513172, 19.12464378835415], [72.79314310421705, 19.12374152665597], [72.78602612002203, 19.12433051267502], [72.78363486336978, 19.12517471416639], [72.7840013610179, 19.13039610465973], [72.78752743991178, 19.13680799503358], [72.78769042860304, 19.14540278671905], [72.7869199158376, 19.14830036912149], [72.78063280243954, 19.15271279883915], [72.78023845294791, 19.15405886751481], [72.77996726708892, 19.15630501711714], [72.78037049032277, 19.15761871381994], [72.78102875344891, 19.16030098717416], [72.78924643032211, 19.16598307680438], [72.79167640522105, 19.16851700519952], [72.7944683452085, 19.17650224420049], [72.79463731048355, 19.18275093754702], [72.79393102557276, 19.18921455938542], [72.79420985526639, 19.19063944842468], [72.78889162391658, 19.19208395517147], [72.78612550317129, 19.19214239237619], [72.78466248025697, 19.19369855067044], [72.78415777731561, 19.19457732155452], [72.78274160200185, 19.20584501487173], [72.78183688194987, 19.20812716536857], [72.77898986368804, 19.21613020941472], [72.78018758332075, 19.22276504055053], [72.78201872900392, 19.23681184738414], [72.7822899739972, 19.24411661146626], [72.78223334870403, 19.25785348264018], [72.78161967909723, 19.26128326310093], [72.78152327259038, 19.26324862222877], [72.79059768156439, 19.26007655766847], [72.79585951362014, 19.25968411757414], [72.80033450272988, 19.26095665961824], [72.80559069823289, 19.25639591116251], [72.81820281733967, 19.24547256722724], [72.8247877452733, 19.24467661148488], [72.82908702224606, 19.24542944781298], [72.83525578967117, 19.24928152973121], [72.83700873627848, 19.252839627218], [72.83808384141597, 19.26385647514432], [72.84220344452302, 19.26598870618045], [72.85635609875446, 19.2691815895028], [72.85647765460278, 19.26921735140491], [72.86700161703104, 19.26497950081041], [72.87378730785882, 19.25970158947858], [72.88848932486077, 19.25115547032232], [72.89272655893086, 19.24966917559924], [72.9076138805591, 19.24675500477621], [72.90676449594125, 19.24187111814916], [72.91142409348568, 19.23418916245773], [72.92183212448678, 19.22144681138249], [72.92746623761656, 19.21324339119202], [72.93726371175474, 19.20503843363147], [72.93733508768126, 19.18971338187406], [72.94834207874112, 19.18660385969415], [72.95589482522792, 19.18334075413861], [72.96351816322024, 19.18144137638827], [72.97113830998823, 19.17674430366985], [72.9729408788873, 19.17355923435282], [72.97453407642337, 19.17076643794126], [72.97973684072407, 19.16155314724616], [72.98286903958724, 19.15602011933197], [72.98335063588472, 19.15131076646089], [72.98250801503995, 19.14487475447756], [72.97960742500352, 19.13374017299032], [72.97313899373576, 19.12001419702516], [72.97029944380121, 19.11174620021322], [72.96776197888451, 19.09355081452817], [72.96939460958255, 19.08143235729567], [72.96872462266373, 19.07472236746951], [72.97030308641453, 19.06680469031219], [72.97198745359866, 19.05962980398235], [72.9780395403505, 19.04723209256556], [72.97918375470402, 19.04103591302128], [72.97852544324097, 19.03271608737577], [72.9750188608815, 19.02461962118894], [72.96154663250418, 18.99978773110226], [72.95858745046328, 18.98733532677168]]]]}}]};
+                    vulnerability_map = L.geoJSON(mumbaigeojson,
+                                                {style: function(feature) {
+                                                        switch (feature.properties.Districts) {
+                                                            case 'Mumbai': return {color: "#961a1a",opacity: 0.5};
+                                                            case 'Mumbai Suburban':   return {color: "#201a96",opacity: 0.5};
+                                                        }
+                                                    
+                                                    },
+                                                onEachFeature: function onEachFeature(feature, layer) {
+                                                    // does this feature have a property named popupContent?
+                                                    if (feature.properties && feature.properties.popupContent) {
+                                                        layer.bindPopup(feature.properties.popupContent);
+                                                    }
+                                                }   
+                                            }).addTo(map);
+                                            
+                    map.flyTo(mapCenter, mapZoom);
+                    // mumbai_landuse = true;
+                    
+                    floodLayer.bringToFront();
+                }
+
+                else if (basemap === 'Flood shelters') {
+                    
+                    const flood_shelters = L.icon({
+                            iconUrl: shelter_icon_url,
+                            iconSize: [25, 25],
+                            iconAnchor: [16, 37],
+                            popupAnchor: [0, -28]
+                        });
+
+                    for (var i=0; i < shelter_list.length; i++) {
+                        const shelter_markers = L.marker([shelter_list[i]['lat'],shelter_list[i]['lon']], {icon: flood_shelters}).addTo(map);
+                        shelter_markers.bindPopup(shelter_list[i]['message']).openPopup();
+                        shelter_photos.push(shelter_markers);
+                    }
+                    
+                    floodLayer.bringToFront();
+                }
+
+                else if (basemap === 'Vulnerability index') {
+                    if (mumbai_popn_density) {
+                        map.removeLayer(geojson);
+                        mumbai_popn_density = false;
+                    }
+
+                    if (vulnerability_map) {
+                        map.removeLayer(vulnerability_map);
+                    }
+
+                    var swlat = mumbai_vulnerability_map['vulnerability_index']['LR'][0];
+                    var swlong = mumbai_vulnerability_map['vulnerability_index']['UL'][1];
+                    var nelat = mumbai_vulnerability_map['vulnerability_index']['UL'][0];
+                    var nelong = mumbai_vulnerability_map['vulnerability_index']['LR'][1];
+                    const latLngBounds = L.latLngBounds([[nelat, nelong], [swlat, swlong]]);
+                    var imageUrl = "https://live.staticflickr.com/65535/53037585656_aae07f56f1_o.png";
+                    vulnerability_map = L.imageOverlay(imageUrl, latLngBounds).addTo(map);
+                    
+                    map.flyTo(mapCenter, mapZoom);
+                    
+                    floodLayer.bringToFront();
+                }
+
+                else if (basemap === 'Vulnerability classification') {
+                    if (mumbai_popn_density) {
+                        map.removeLayer(geojson);
+                        mumbai_popn_density = false;
+                    }
+
+                    if (vulnerability_map) {
+                        map.removeLayer(vulnerability_map);
+                    }
+
+                    var swlat = mumbai_vulnerability_map['vulnerability_index']['LR'][0];
+                    var swlong = mumbai_vulnerability_map['vulnerability_index']['UL'][1];
+                    var nelat = mumbai_vulnerability_map['vulnerability_index']['UL'][0];
+                    var nelong = mumbai_vulnerability_map['vulnerability_index']['LR'][1];
+                    const latLngBounds = L.latLngBounds([[nelat, nelong], [swlat, swlong]]);
+                    var imageUrl = "https://live.staticflickr.com/65535/53037033252_7a3f233d46_o.png";
+                    vulnerability_map = L.imageOverlay(imageUrl, latLngBounds).addTo(map);
+                    
+                    map.flyTo(mapCenter, mapZoom);
+
+                    const recom_icon = new L.icon({
+                        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-black.png',
+                        iconSize: [25, 41],
+                        iconAnchor: [16, 37],
+                        popupAnchor: [0, -28]
+                    });
+
+                    for (var i = 0; i<recom_dict.length; i++){
+                        const recom_marker = L.marker([recom_dict[i]['lat'],recom_dict[i]['lon']], {icon: recom_icon}).addTo(map);
+                        recom_marker.bindPopup('<img src="{}"/>'.format(recom_dict[i]['uri'])).openPopup();
+                        recoms.push(recom_marker);
+                    }
+
+                    floodLayer.bringToFront();
+                }
+
+                else if (basemap === 'Land subsidence') {
+                    if (mumbai_popn_density) {
+                        map.removeLayer(geojson);
+                        mumbai_popn_density = false;
+                    }
+
+                    if (vulnerability_map) {
+                        map.removeLayer(vulnerability_map);
+                    }
+
+                    var swlat = mumbai_vulnerability_map['vulnerability_index']['LR'][0];
+                    var swlong = mumbai_vulnerability_map['vulnerability_index']['UL'][1];
+                    var nelat = mumbai_vulnerability_map['vulnerability_index']['UL'][0];
+                    var nelong = mumbai_vulnerability_map['vulnerability_index']['LR'][1];
+                    const latLngBounds = L.latLngBounds([[nelat, nelong], [swlat, swlong]]);
+                    var imageUrl = "https://live.staticflickr.com/65535/53033381678_8465947f43_o.png";
+                    vulnerability_map = L.imageOverlay(imageUrl, latLngBounds).addTo(map);
+                    
+                    map.flyTo(mapCenter, mapZoom);
+                    
+                    floodLayer.bringToFront();
+                }
+
+                else if (basemap === 'Topography') {
+                    if (mumbai_popn_density) {
+                        map.removeLayer(geojson);
+                        mumbai_popn_density = false;
+                    }
+
+                    if (vulnerability_map) {
+                        map.removeLayer(vulnerability_map);
+                    }
+
+                    var swlat = mumbai_vulnerability_map['vulnerability_index']['LR'][0];
+                    var swlong = mumbai_vulnerability_map['vulnerability_index']['UL'][1];
+                    var nelat = mumbai_vulnerability_map['vulnerability_index']['UL'][0];
+                    var nelong = mumbai_vulnerability_map['vulnerability_index']['LR'][1];
+                    const latLngBounds = L.latLngBounds([[nelat, nelong], [swlat, swlong]]);
+                    var imageUrl = "https://live.staticflickr.com/65535/53033381658_152351a299_o.png";
+                    vulnerability_map = L.imageOverlay(imageUrl, latLngBounds).addTo(map);
+                    
+                    map.flyTo(mapCenter, mapZoom);
+
+                    floodLayer.bringToFront();
+                }
+
+                
+            };
+
+        function updateLegend(basemap){
+            
+            if ((basemap === 'Population density') || (basemap === 'Land use') || (basemap === 'Land subsidence') || (basemap === 'Topography') || (basemap === 'Vulnerability index') || (basemap === 'Vulnerability classification')  || (basemap === 'Flood shelters')  || (basemap === 'Crowd-Sourced Photos')) {
+                if (legend_container){
+                    map.removeControl(legend_container);
+                }
+                
+                legend_container = L.wmsLegend(legend_imgs[basemap],map);
+            }
+
+            else {
+                map.removeControl(legend_container);
+            }
+        };
+        
+        // var legend = L.control({position: 'topleft'});
+
+        // legend.onAdd = function (map) {
+
+        //     var div = L.DomUtil.create('div', 'info legend');
+        //     div.innerHTML = "<img src='{}'>".format(legend_imgs[basemap]);
+
+        //     return div;
+        // };
+
+        // legend.addTo(map);
+
+
+      </script>
+      
+{% endblock %}

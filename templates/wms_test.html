@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.0.3/dist/leaflet.css"/>
+    <!-- <link rel="stylesheet" href="leaflet.wmslegend.css"/> -->
+    <link rel="stylesheet" href="https://maps.kartoza.com/css/leaflet.wmslegend.css">
+    <style>
+      #map {
+        bottom: 0;
+        left: 0;
+        position: absolute;
+        right: 0;
+        top: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+    <script src="https://unpkg.com/leaflet@1.0.3/dist/leaflet.js"></script>
+    <!-- <script src="https://unpkg.com/georaster"></script>
+    <script src="https://unpkg.com/georaster-layer-for-leaflet"></script> -->
+    <!-- <script src="leaflet.wmslegend.js"></script> -->
+    <script src="https://maps.kartoza.com/js/leaflet.wmslegend.js"></script>
+    
+    <script>
+      // initalize leaflet map
+      var map = L.map('map').setView([0, 0], 5);
+
+      var geoserver = 'https://sedac.ciesin.columbia.edu/geoserver/wms';
+      var popn_density_2020 = 'gpw-v4:gpw-v4-population-density_2020';//
+      var gpp_2050 = 'popdynamics:popdynamics-pop-projection-ssp-2010-2100_ssp1-2050-total-population';
+
+      var basemaps = {
+        Topography: L.tileLayer.wms('http://ows.mundialis.de/services/service?', {
+            layers: 'TOPO-WMS'
+        }),
+
+        Places: L.tileLayer.wms('http://ows.mundialis.de/services/service?', {
+            layers: 'OSM-Overlay-WMS'
+        }),
+
+        'Topography, then places': L.tileLayer.wms('http://ows.mundialis.de/services/service?', {
+            layers: 'TOPO-WMS,OSM-Overlay-WMS'
+        }),
+
+        'Places, then topography': L.tileLayer.wms('http://ows.mundialis.de/services/service?', {
+            layers: 'OSM-Overlay-WMS,TOPO-WMS'
+        }),
+
+        'OpenStreetMap': L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 19,
+          attribution: '© OpenStreetMap'
+        }),
+
+        'Population Density (2020)': L.tileLayer.wms('https://sedac.ciesin.columbia.edu/geoserver/wms', {
+            layers: popn_density_2020,
+            format: 'image/png',
+            transparent: true
+        }),
+
+        'Population Projection (2050)': L.tileLayer.wms(geoserver, {
+            layers: gpp_2050,
+            format: 'image/png',
+            transparent: true
+        }),
+    };
+
+    L.control.layers(basemaps).addTo(map);
+
+    basemaps['Population Projection (2050)'].addTo(map);
+    // basemaps['Population Density (2020)'].addTo(map);
+
+    // uri = "http://maps.kartoza.com/cgi-bin/qgis_mapserv.fcgi?";
+    // uri += "map=/web/Boosmansbos/Boosmansbos.qgs&";
+    // uri = 'https://sedac.ciesin.columbia.edu/geoserver/wms'
+    // uri += "&SERVICE=WMS&VERSION=1.3.0&SLD_VERSION=1.1.0&";
+    // uri += "REQUEST=GetLegendGraphic&FORMAT=image/jpeg&LAYER=Boosmansbos&STYLE=";
+    // L.wmsLegend(uri);
+
+    var uri = 'https://sedac.ciesin.columbia.edu/geoserver/ows?service=WMS&request=GetLegendGraphic&format=image/png&width=20&height=20&layer=popdynamics:popdynamics-pop-projection-ssp-2010-2100_ssp1-2050-total-population&';
+    L.wmsLegend(uri,map);
+    
+    // var uri_popn_density = 'https://sedac.ciesin.columbia.edu/geoserver/ows?service=WMS&request=GetLegendGraphic&format=image/png&width=20&height=20&layer=gpw-v4:gpw-v4-population-density-adjusted-to-2015-unwpp-country-totals_2020&style=gpw-v4-population-density-adjusted-to-2015-unwpp-country-totals_2020:default&';
+    // L.wmsLegend(uri_popn_density,map);
+    
+
+    var legend = L.control({position: 'bottomright'});
+
+    legend.onAdd = function (map) {
+
+        var div = L.DomUtil.create('div', 'info legend'),
+        popn_density_legend = ['Population Density (2020)'];
+        image_list = ['https://sedac.ciesin.columbia.edu/geoserver/ows?service=WMS&request=GetLegendGraphic&format=image/png&width=15&height=15&layer=gpw-v4:gpw-v4-population-density-adjusted-to-2015-unwpp-country-totals_2020&style=gpw-v4-population-density-adjusted-to-2015-unwpp-country-totals_2020:default&',
+                      'https://sedac.ciesin.columbia.edu/geoserver/wms?request=GetLegendGraphic&format=image%2Fpng&style=gpw-v4-land-water-area-rev11_landareakm:default&width=15&height=15&legend_options=border:false;mx:0.05;my:0.02;dx:0.2;dy:0.07;fontSize:11;bandInfo:false;&strict=false'];
+
+        // loop through our density intervals and generate a label with a colored square for each interval
+        for (var i = 0; i < image_list.length; i++) {
+            div.innerHTML +=
+            // popn_density_legend[i] + (" <img src="+ image_list[i] +" height='50' width='100'>") +'<br>';
+            (" <img src="+ image_list[i] +" >") +'<br>';
+        }
+
+        return div;
+    };
+
+    legend.addTo(map);
+
+    </script>
+  </body>
+</html>

@@ -1,0 +1,21 @@
+name: SIH_clone
+channels:
+  - anaconda
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.8.17
+  - pip=23.1.2
+  - gdal=3.0.2
+  - matplotlib=3.7.1
+  - numpy=1.24.3
+  - pandas=2.0.2
+  - scipy=1.10.1
+  - pip:
+    - flask
+    - firebase_admin
+    - requests
+    - plotly
+    - overpy
+    - mpmath
+    - opencv-python

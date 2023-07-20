@@ -1,0 +1,37 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    Index
+{% endblock %}
+
+{% block main %}
+    <table class="table" method="get">
+        <thead>
+        <tr>
+
+            <th scope="col">Observation</th>
+            <th scope="col">Lat</th>
+            <th scope="col">Lon</th>
+            <th scope="col">Flood</th>
+            <th scope="col">Image link</th>
+
+        </tr>
+        </thead>
+      {% for key, value in flooded_results.items() %}
+      <tbody>
+        <tr>
+          <th scope="row">{{key}}</th>
+          <td>{{value.lat}}</td>
+          <td>{{value.lon}}</td>
+          <td>{{value.flood}}</td>
+          <td><img src = {{value.image}} width="50" height="50"></td>
+          
+
+        </tr>
+      </tbody>
+      {% endfor %}
+
+    </table>
+    <br>
+    
+{% endblock %}

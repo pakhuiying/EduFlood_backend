@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta name="viewport" content="initial-scale=1.0, user-scalable=no">
+    <meta charset="utf-8">
+    <title>EduFlood+{% block title %}{% endblock %}</title>
+
+      <link rel="icon" type="image/png" href="{{ url_for('static',filename='img/favicon.ico')}}">
+
+        <script src="https://kit.fontawesome.com/4fa2f753fb.js" crossorigin="anonymous"></script>
+      <!-- <link href='https://fonts.googleapis.com/css?family=Source+Sans+Pro:400,300,600,700' rel='stylesheet' type='text/css'> -->
+        <!-- <link rel="stylesheet" type="text/css" href="{{ url_for('static',filename='css/jquery.mobile-1.4.5.css')}}"> -->
+        <!-- floating form -->
+        <link rel="stylesheet" type="text/css" href="{{ url_for('static',filename='css/floating-form.css')}}" />
+        <!-- floating elev -->
+        <link rel="stylesheet" type="text/css" href="{{ url_for('static',filename='css/flood-elev.css')}}" />
+        <!-- floating legend -->
+        <!-- <link rel="stylesheet" type="text/css" href="{{ url_for('static',filename='css/floating-layers.css')}}" /> -->
+
+        <script src="{{ url_for('static',filename='js/jquery.js')}}"></script>
+        <!-- <script src="{{ url_for('static',filename='js/jquery.mobile-1.4.5.js')}}"></script> -->
+        
+      <link rel="stylesheet" type="text/css" href="{{ url_for('static',filename='css/UI.css')}}">
+       
+      <link rel="stylesheet" type="text/css" href="{{ url_for('static',filename='css/dropdown.css')}}">
+      <!-- Load Leaflet from CDN -->
+        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+        <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+            
+            <!-- Load Esri Leaflet from CDN -->
+        <script src="https://unpkg.com/esri-leaflet@2.3.2/dist/esri-leaflet.js"
+        integrity="sha512-6LVib9wGnqVKIClCduEwsCub7iauLXpwrd5njR2J507m3A2a4HXJDLMiSZzjcksag3UluIfuW1KzuWVI5n/cuQ=="
+        crossorigin=""></script>
+        <!-- Load Esri Leaflet Geocoder from CDN -->
+        <link rel="stylesheet" href="https://unpkg.com/esri-leaflet-geocoder@2.3.2/dist/esri-leaflet-geocoder.css"
+            integrity="sha512-IM3Hs+feyi40yZhDH6kV8vQMg4Fh20s9OzInIIAc4nx7aMYMfo+IenRUekoYsHZqGkREUgx0VvlEsgm7nCDW9g=="
+            crossorigin="">
+
+            <script src="https://unpkg.com/leaflet-image@latest/leaflet-image.js"></script>
+
+        <script src="https://unpkg.com/topojson@3.0.2/dist/topojson.min.js"></script>
+        <!--Leaflet Foolscreen -->
+        <script src='https://api.mapbox.com/mapbox.js/plugins/leaflet-fullscreen/v1.0.1/Leaflet.fullscreen.min.js'></script>
+        <link href='https://api.mapbox.com/mapbox.js/plugins/leaflet-fullscreen/v1.0.1/leaflet.fullscreen.css' rel='stylesheet' />
+        <!-- leaflet wms legend -->
+        <link rel="stylesheet" type="text/css" href="{{ url_for('static',filename='css/leaflet.wmslegend.css')}}">
+        <script src="{{ url_for('static',filename='js/leaflet.wmslegend.js')}}"></script>
+        <!-- daterange picker -->
+        <script type="text/javascript" src="https://cdn.jsdelivr.net/jquery/latest/jquery.min.js"></script>
+        <script type="text/javascript" src="https://cdn.jsdelivr.net/momentjs/latest/moment.min.js"></script>
+        <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
+        <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css" />
+      
+      <script>
+        String.prototype.format = function () {
+            var i = 0, args = arguments;
+            return this.replace(/{}/g, function () {
+                return typeof args[i] != 'undefined' ? args[i++] : '';
+            });
+        };
+      </script>
+      
+
+  </head>
+  <body>
+        
+        {% block main %}
+        {% endblock %}
+
+        
+        {% block javascript %}
+        {% endblock %}
+        
+        
+      
+      
+  </body>
+</html>

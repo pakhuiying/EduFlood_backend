@@ -1,0 +1,342 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    AM I SAFE
+{% endblock %}
+
+{% block main %}
+        <!-- leaflet map container -->
+        <div id="mapPanel" style="width:100%;height:700px;"></div>
+        <!-- dropdown list -->
+        <div id="floating-dropdown"><div id="dd" class="wrapper-dropdown-5" tabindex="1"><img src="{{ url_for('static',filename='img/apple-touch-icon.png')}}" height="30"  align="top" style="padding-top:10px;" >
+            <select class="wrapper-dropdown-5" id="basemapsAMISAFE" ></select> 
+            </div>
+        </div>
+        <div class="control-center" title = 'Click to return to flood simulator'>Flood simulator 
+            <a href="/">
+            <span class="link-spanner"></span>
+            </a>
+        </div>
+{% endblock %}
+
+{% block javascript %}
+<script>
+
+    var map = L.map('mapPanel',
+        {
+            minZoom: 2,
+            maxZoom: 15,
+            fullscreenControl: true,
+            maxBounds:L.latLngBounds(L.latLng(-90, -180), L.latLng(90, 180)),
+            maxBoundsViscosity: 1.0
+        });
+    
+    var lat, lng, intitZoom;
+    var lat = "{{lat}}";
+    var lng = "{{lon}}";
+    initZoom = 15;
+    map.setView([lat, lng], initZoom);
+    
+    map.on('click',function(e) {
+            L.popup().setContent(e.latlng.lat.toFixed(6) + ', ' + e.latlng.lng.toFixed(6))
+                     .setLatLng(e.latlng)
+                     .openOn(map);
+        });
+        
+    var elev = 1; // create a drop down level of 1m and 2m
+    
+    var flooded_results= JSON.parse('{{flooded_results | tojson}}');
+                    
+    console.log('flooded results:', flooded_results);
+    
+    var leaflet_color_icon = {
+                'yellow': "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-yellow.png",
+                'orange': "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-orange.png",
+                'red': "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png"
+            };
+
+    for (var flood_idx in flooded_results){
+        var flood_img = flooded_results[flood_idx]['image']; //icon url
+        var flood_exists = flooded_results[flood_idx]['flood'];
+        var flood_severity = flooded_results[flood_idx]['flood_severity'];
+        var flood_coord = [ flooded_results[flood_idx]['lon'], flooded_results[flood_idx]['lat']];
+        console.log(flood_img);
+        console.log('flood exist:', flood_exists);
+        console.log('flood coord:', flood_coord);
+        console.log('flood severity:', flood_severity)
+        
+        if (flood_severity === 'low') {
+            var icon_url = leaflet_color_icon['yellow'];
+        }
+
+        else if (flood_severity === 'moderate') {
+            var icon_url = leaflet_color_icon['orange'];
+        }
+
+        else {
+            var icon_url = leaflet_color_icon['red'];
+        }
+
+        const flood_icon = L.icon({
+            iconUrl: icon_url,
+            iconSize: [25, 41],
+            iconAnchor: [16, 37],
+            popupAnchor: [0, -28]
+        });
+        
+        var geojsonFeature = {
+            "type": "Feature",
+            "properties": {
+                // "name": "Coors Field",
+                // "amenity": "Baseball Stadium",
+                // "popupContent":"<b>Flood:</b> " + flood_exists
+                popupContent: '<img src="{}" height="120px" width="150px"/>'.format(flood_img)
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": flood_coord
+            }
+        };
+
+        const coorsLayer = L.geoJSON(geojsonFeature, {
+
+            pointToLayer(feature, latlng) {
+                return L.marker(latlng, {icon: flood_icon});
+            },
+            // onEachFeature
+            onEachFeature(feature, layer) {
+                if (feature.properties && feature.properties.popupContent) {
+                    layer.bindPopup(feature.properties.popupContent)
+                }
+            }
+        }).addTo(map);
+
+    }
+
+    var circle_colors = {
+        4:{'color':'red', 'fillColor': '#ff2b2b','desc': 'High risk'}, 
+        3:{'color':'orange','fillColor':'#fc6b03','desc': 'Moderate risk'},
+        2:{'color':'yellow','fillColor':'#ffed2b','desc': 'Low risk'},
+        1:{'color':'green','fillColor':'#49c928','desc': 'Low risk'}
+    };
+
+    
+    var itsxn_dict = JSON.parse('{{itsxn_dict | tojson}}');
+    console.log('itsxn_dict:', itsxn_dict);
+    
+
+    function assignColorCode(rad_50, rad_100) {
+        if (rad_50 === 'True' && rad_100 === 'True') {
+            return [4,4];
+        }
+
+        else if (rad_50 === 'False' && rad_100 === 'True') {
+            return [3,4];
+        }
+
+        else if (rad_50 === 'False' && rad_100 === 'False') {
+            return [1,2];
+        }
+
+        else {
+            console.log('color code not working properly');
+            return [1,1];
+        }
+
+    };
+
+    function get_amisafe_json(itsxn_dict){
+        var amisafe_dict = {};
+        // if given a flood height of elev1, how at risk are they based on the distance from them
+        var elev1_colorcode = assignColorCode(itsxn_dict['elevation1']['radius1'], itsxn_dict['elevation1']['radius2']);
+        var elev1_colorcode_rad50 = elev1_colorcode[0];
+        var elev1_colorcode_rad100 = elev1_colorcode[1];
+
+        var elev2_colorcode = assignColorCode(itsxn_dict['elevation2']['radius1'], itsxn_dict['elevation2']['radius2']);
+        var elev2_colorcode_rad50 = elev2_colorcode[0];
+        var elev2_colorcode_rad100 = elev2_colorcode[1];
+        
+        // if given a flood height of elev2, how at risk are they based on the distance from them
+        // var elev2_colorcode_rad50 = assignColorCode(itsxn_dict['elevation2']['radius1'], itsxn_dict['elevation2']['radius2']);
+        // if (elev2_colorcode_rad50 + 1 > 4) {
+        //     var elev2_colorcode_rad100 = 4;
+        // }
+
+        // else {
+        //     var elev2_colorcode_rad100 = elev2_colorcode_rad50 + 1;
+        // }
+
+        amisafe_dict['elevation1'] = {'radius1':elev1_colorcode_rad50, 'radius2': elev1_colorcode_rad100};
+        amisafe_dict['elevation2'] = {'radius1':elev2_colorcode_rad50, 'radius2': elev2_colorcode_rad100};
+        return amisafe_dict
+    };
+
+    var amisafe_json = get_amisafe_json(itsxn_dict);
+    console.log('amisafe_json:', amisafe_json);
+
+    (function() {
+        var elm = document.getElementById('basemapsAMISAFE'),
+            df = document.createDocumentFragment();
+        
+        var options_list = ['1 meters', '2 meters'];
+        for (var j = 0; j < options_list.length; j++){
+            var option = document.createElement('option');
+            option.value = options_list[j];
+            option.appendChild(document.createTextNode(options_list[j]));
+            df.appendChild(option);
+        }
+
+        elm.appendChild(df);
+    }());
+
+    var layer = L.tileLayer('https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}.png').addTo(map);
+
+    document
+        .querySelector('#basemapsAMISAFE')
+        .addEventListener('change', function (e) {
+            //$('#myModal').modal();
+            //e.target.value = 'OpenStreetMap';
+            
+            var basemap = e.target.value;
+            setBasemap(basemap);
+            
+        });
+    
+    var fmTileUrl = 'https://www.floodmap.net/getFMTile.ashx?x={x}&y={y}&z={z}&e=';
+    var floodLayer = L.tileLayer(fmTileUrl + elev, {
+        attribution: '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> contributors,<a href="https://www.mapzen.com/rights">Mapzen</a>, <a href = "https://floodmap.net">Floodmap.net</a>',
+        opacity: 0.5
+    });
+
+    map.addLayer(floodLayer);
+
+    function refresh(elev) {
+        floodLayer.setUrl(fmTileUrl + elev);
+        floodLayer.bringToFront();
+    };
+
+    var rad1_color = circle_colors[amisafe_json['elevation1']['radius1']]['color'];
+    var rad2_color = circle_colors[amisafe_json['elevation1']['radius2']]['color'];
+    console.log('rad1_color:', rad1_color);
+    console.log('rad2_color:', rad2_color);
+
+    var circle_50 = L.circle([lat, lng], {
+        color: rad1_color,
+        fillColor: circle_colors[amisafe_json['elevation1']['radius1']]['fillColor'],
+        fillOpacity: 0.4,
+        radius: 50
+    }).addTo(map);
+
+    var circle_100 = L.circle([lat, lng], {
+        color: rad2_color,
+        fillColor: circle_colors[amisafe_json['elevation1']['radius2']]['fillColor'],
+        fillOpacity: 0.4,
+        radius: 100
+    }).addTo(map);
+
+    // add standalone popup
+    var popup_rad1 = circle_colors[amisafe_json['elevation1']['radius1']]['desc'];
+    var popup_rad2 = circle_colors[amisafe_json['elevation1']['radius2']]['desc'];
+
+    popupmsg = "<b>Location</b>: {}, {}.<br><b>At 1m simulated flood level,</b><br>Within a <b>50m</b> radius: <span style='background-color:#aaabad;color:{};'><b>{}</b></span><br>Within a <b>100m</b> radius: <span style='background-color:#aaabad;color:{};'><b>{}</b></span>".format(lat,lng, rad1_color, popup_rad1, rad2_color, popup_rad2);
+    popup = L.popup()
+        .setLatLng([lat, lng])
+        .setContent(popupmsg)
+        .openOn(map);
+
+    function setBasemap(basemap) {
+        if (basemap === '1 meters') {
+            
+            if (circle_50){
+                map.removeLayer(circle_50);
+            }
+
+            if (circle_100){
+                map.removeLayer(circle_100);
+            }
+
+            if (popup){
+                map.removeLayer(popup);
+            }
+
+            var rad1_color = circle_colors[amisafe_json['elevation1']['radius1']]['color'];
+            var rad2_color = circle_colors[amisafe_json['elevation1']['radius2']]['color'];
+            console.log('rad1_color:', rad1_color);
+            console.log('rad2_color:', rad2_color);
+
+            circle_50 = L.circle([lat, lng], {
+                color: rad1_color,
+                fillColor: circle_colors[amisafe_json['elevation1']['radius1']]['fillColor'],
+                fillOpacity: 0.4,
+                radius: 50
+            }).addTo(map);
+
+            circle_100 = L.circle([lat, lng], {
+                color: rad2_color,
+                fillColor: circle_colors[amisafe_json['elevation1']['radius2']]['fillColor'],
+                fillOpacity: 0.4,
+                radius: 100
+            }).addTo(map);
+
+            // add standalone popup
+            var popup_rad1 = circle_colors[amisafe_json['elevation1']['radius1']]['desc'];
+            var popup_rad2 = circle_colors[amisafe_json['elevation1']['radius2']]['desc'];
+
+            popupmsg = "<b>Location</b>: {}, {}.<br><b>At 1m simulated flood level,</b><br>Within a <b>50m</b> radius: <span style='background-color:#aaabad;color:{};'><b>{}</b></span><br>Within a <b>100m</b> radius: <span style='background-color:#aaabad;color:{};'><b>{}</b></span>".format(lat,lng, rad1_color, popup_rad1, rad2_color, popup_rad2);
+            popup = L.popup()
+                .setLatLng([lat, lng])
+                .setContent(popupmsg)
+                .openOn(map);
+            
+            refresh(1);
+        }
+
+        else if (basemap === '2 meters') {
+            
+            // add radius
+            if (circle_50){
+                map.removeLayer(circle_50);
+            }
+
+            if (circle_100){
+                map.removeLayer(circle_100);
+            }
+
+            if (popup){
+                map.removeLayer(popup);
+            }
+
+            var rad1_color = circle_colors[amisafe_json['elevation2']['radius1']]['color'];
+            var rad2_color = circle_colors[amisafe_json['elevation2']['radius2']]['color'];
+
+            circle_50 = L.circle([lat, lng], {
+                color: rad1_color,
+                fillColor: circle_colors[amisafe_json['elevation2']['radius1']]['fillColor'],
+                fillOpacity: 0.4,
+                radius: 50
+            }).addTo(map);
+
+            // add radius
+            circle_100 = L.circle([lat, lng], {
+                color: rad2_color,
+                fillColor: circle_colors[amisafe_json['elevation2']['radius2']]['fillColor'],
+                fillOpacity: 0.4,
+                radius: 100
+            }).addTo(map);
+
+            // add standalone popup
+            var popup_rad1 = circle_colors[amisafe_json['elevation2']['radius1']]['desc'];
+            var popup_rad2 = circle_colors[amisafe_json['elevation2']['radius2']]['desc'];
+
+            popupmsg = "<b>Location</b>: {}, {}.<br><b>At 2m simulated flood level,</b><br>Within a <b>50m</b> radius: <span style='background-color:#aaabad;color:{};'><b>{}</b></span><br>Within a <b>100m</b> radius: <span style='background-color:#aaabad;color:{};'><b>{}</b></span>".format(lat,lng, rad1_color, popup_rad1, rad2_color, popup_rad2);
+            popup = L.popup()
+                .setLatLng([lat, lng])
+                .setContent(popupmsg)
+                .openOn(map);
+            
+            refresh(2);
+        }
+    }
+</script>
+      
+{% endblock %}
